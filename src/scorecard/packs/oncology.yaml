@@ -1,0 +1,118 @@
+# Oncology completeness pack.
+# Owner: member-3.
+#
+# Each criterion lists the IR variables that make up its "completeness". A
+# variable is a column name from the DatasetProfile (the GDC adapter's names
+# are the canonical vocabulary today; other adapters map onto them).
+#
+#   column          the IR column
+#   any_of          alternatively, a list of columns; the variable is present
+#                   for a patient when any of them is
+#   uninformative   values that exist but carry no information and count as missing
+#                   (for example AJCC "Stage X": stage cannot be assessed)
+#   applies_to      primary sites the variable applies to (case-insensitive
+#                   prefix match on primary_site); omitted means every patient
+#
+# validated: false marks a criterion whose variable list is a first draft
+# and has not had domain review. The data card shows that label.
+
+id: oncology-completeness
+version: 0.1.0
+
+criteria:
+  - id: stage_histology_grade
+    title: Stage, histology & grade
+    description: TNM staging, tumor grade, primary site
+    bridge2ai: [Characterization]
+    validated: true
+    variables:
+      - name: ajcc_pathologic_stage
+        column: ajcc_pathologic_stage
+        uninformative: [Stage X]
+      - name: ajcc_pathologic_t
+        column: ajcc_pathologic_t
+        uninformative: [TX]
+      - name: ajcc_pathologic_n
+        column: ajcc_pathologic_n
+        uninformative: [NX]
+      - name: ajcc_pathologic_m
+        column: ajcc_pathologic_m
+        uninformative: [MX]
+      - name: tumor_grade
+        column: tumor_grade
+        uninformative: [GX, Not Applicable]
+      - name: histology
+        column: primary_diagnosis
+      - name: primary_site
+        column: primary_site
+
+  - id: treatment
+    title: Treatment information
+    description: Surgery, chemotherapy, radiation, immunotherapy
+    bridge2ai: [Characterization]
+    validated: false
+    review_note: >
+      GDC records treatments as yes/no per treatment type. Today we only score
+      whether any treatment record exists. Member 3 to decide whether each type
+      (surgery, chemotherapy, radiation, hormone, immunotherapy) should be its own
+      variable, and how to tell "not given" from "not recorded".
+    variables:
+      - name: treatment_types
+        column: treatment_types
+
+  - id: outcomes
+    title: Outcomes / survival
+    description: Status, recurrence, follow-up, censoring encoding
+    bridge2ai: [Computability]
+    validated: true
+    variables:
+      - name: vital_status
+        column: vital_status
+      - name: survival_time
+        any_of: [days_to_death, days_to_last_follow_up]
+      - name: progression_or_recurrence
+        column: progression_or_recurrence
+
+  - id: biomarkers
+    title: Actionable biomarkers
+    description: KRAS, EGFR, HER2, BRAF, MSI, PD-L1
+    bridge2ai: [Characterization]
+    validated: false
+    review_note: >
+      The breast panel (ER, PR, HER2) comes from GDC molecular_tests and is checked
+      against TCGA-BRCA. The other entries are placeholders: no adapter emits
+      these columns yet, and their applies_to lists need domain review.
+    variables:
+      - name: er_status
+        column: er_status
+        applies_to: [Breast]
+      - name: pr_status
+        column: pr_status
+        applies_to: [Breast]
+      - name: her2_status
+        column: her2_status
+        applies_to: [Breast, Stomach]
+      - name: kras_status
+        column: kras_status
+        applies_to: [Colon, Rectum, Lung, Pancreas]
+      - name: egfr_status
+        column: egfr_status
+        applies_to: [Lung]
+      - name: braf_status
+        column: braf_status
+        applies_to: [Colon, Rectum, Skin, Thyroid]
+      - name: msi_status
+        column: msi_status
+        applies_to: [Colon, Rectum, Corpus uteri, Endometrium, Stomach]
+      - name: pdl1_status
+        column: pdl1_status
+        applies_to: [Lung, Bladder, Head and neck]
+
+  - id: standards_conformance
+    title: Standards conformance
+    description: AJCC staging, ICD-O, ICD-10, mCODE
+    bridge2ai: [FAIRness]
+    validated: false
+    # Conformance is not coverage: it checks that present values are valid codes.
+    # The check is a stub; see checks/completeness/standards.py.
+    variables: []

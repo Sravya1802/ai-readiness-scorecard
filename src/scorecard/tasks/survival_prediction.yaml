@@ -1,0 +1,62 @@
+# Overall survival prediction from clinical (and later molecular) features.
+#
+# Thresholds below are starting values, not settled science. Change them in a
+# PR that says why, so the data card's verdicts stay explainable.
+
+id: survival-prediction
+title: Overall survival prediction
+description: >
+  Predict time to death from diagnosis, with patients alive at last contact
+  treated as censored. Also assessed as 5-year mortality for the class-balance view.
+pack: oncology-completeness
+
+target:
+  kind: survival
+  status_column: vital_status
+  event_values: [Dead]
+  censored_values: [Alive]
+  event_time_column: days_to_death
+  censored_time_column: days_to_last_follow_up
+  horizon_days: 1825
+
+# Which completeness criteria matter for this task, and how much.
+# blocking: the task cannot be done soundly below warn_at.
+# degrading: the model will be weaker or less interpretable.
+completeness:
+  outcomes:
+    severity: blocking
+    required_variables: [vital_status, survival_time]
+    pass_at: 0.95
+    warn_at: 0.80
+  stage_histology_grade:
+    severity: degrading
+    pass_at: 0.90
+    warn_at: 0.50
+  treatment:
+    severity: degrading
+    pass_at: 0.80
+    warn_at: 0.40
+  biomarkers:
+    severity: degrading
+    pass_at: 0.90
+    warn_at: 0.60
+  standards_conformance:
+    severity: degrading
+
+integrity:
+  missingness:
+    feature_warn: 0.20      # warn when any feature is missing for more than this share of patients
+    overall_warn: 0.10      # warn when the whole feature table is missing more than this share
+    alpha: 0.05             # significance for missingness-vs-site and missingness-vs-target
+    min_site_size: 10       # sites smaller than this are pooled as "other" for the test
+  class_imbalance:
+    min_minority_warn: 100  # fewer minority-class patients than this: degrading
+    min_minority_fail: 30   # fewer than this: blocking
+  site_effects:
+    n_permutations: 200
+    cv_folds: 5
+    alpha: 0.05
+  confounding:
+    cramers_v_warn: 0.20
+  leakage:
+    near_duplicate_threshold: 0.99

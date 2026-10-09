@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# Scorecard run outputs and cached repository snapshots
+out/
+.scorecard_cache/
+
+# Personal Claude Code settings
+.claude/settings.local.json

@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ profile.title }} · AI-Readiness Scorecard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout follows the prototype on slide 7: header strip, dataset + verdict, then three columns. */
+:root {
+  --ground: #e9e7e1;
+  --paper: #f8f7f4;
+  --ink: #1d2422;
+  --muted: #6b716e;
+  --rule: #dcd9d1;
+  --pass: #1f6b57;
+  --warn: #b0731a;
+  --fail: #a8382b;
+  --fail-tint: #f6e9e5;
+  --stub: #9a9e9b;
+  --track: #e6e3dc;
+  --panel-dark: #151a1d;
+  --panel-dark-ink: #e7ebe9;
+  --panel-dark-accent: #7fd1bf;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #121514; --paper: #1b1f1e; --ink: #e6e9e7; --muted: #9aa19d; --rule: #2d3331;
+    --pass: #5cc2a3; --warn: #e2a24a; --fail: #f07f6e; --fail-tint: #2c1d1a; --stub: #6d7471;
+    --track: #2a302e; --panel-dark: #0b0e0f;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 14px/1.5 var(--sans); }
+.page { max-width: 1320px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 14px; }
+.mono { font-family: var(--mono); }
+.eyebrow { font: 500 11px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.panel { background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 18px 20px; min-width: 0; }
+a { color: inherit; }
+.strip { font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.strip b { color: var(--ink); }
+.strip span + span::before { content: "|"; margin-right: 14px; color: var(--rule); }
+
+.top { display: grid; grid-template-columns: minmax(0, 1fr) 360px; }
+.top .verdict { border-left: 1px solid var(--rule); padding-left: 24px; margin-left: 24px; }
+h1 { font-size: 30px; line-height: 1.15; margin: 6px 0 6px; letter-spacing: -.01em; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.chip { font: 500 11px var(--mono); border: 1px solid var(--rule); border-radius: 3px; padding: 4px 8px; }
+.verdict-label { font: 700 26px/1.2 var(--sans); letter-spacing: .02em; margin: 6px 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.verdict-label::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+.ready { color: var(--pass); } .conditional { color: var(--warn); } .not-ready { color: var(--fail); }
+.badge { font: 600 10px var(--mono); letter-spacing: .1em; border: 1px solid currentColor; border-radius: 3px; padding: 2px 6px; color: var(--muted); }
+.counts { font: 600 12px var(--mono); display: flex; gap: 14px; margin-top: 8px; flex-wrap: wrap; }
+
+.cols { display: grid; grid-template-columns: 270px minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.stack { display: grid; gap: 14px; min-width: 0; }
+.radar { display: block; margin: 4px auto 0; max-width: 100%; height: auto; }
+.radar text { font: 500 9.5px var(--mono); fill: var(--muted); letter-spacing: .06em; }
+.radar text.na { fill: var(--stub); }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; margin-top: 12px; border-top: 1px solid var(--rule); padding-top: 10px; font-size: 13px; }
+.kv dd { margin: 0; font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.kv dt { color: var(--muted); }
+.link-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; margin-top: 10px; font-size: 13px; }
+.link-row .bar { grid-column: 1 / -1; }
+.link-row .n { font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+.bar { height: 5px; background: var(--track); border-radius: 3px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--pass); }
+.bar.warn i { background: var(--warn); } .bar.fail i { background: var(--fail); }
+.muted { color: var(--muted); } .stubtext { color: var(--stub); font-style: italic; }
+.foot { font-size: 12px; color: var(--muted); margin-top: 12px; }
+
+.list-head { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
+.row { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 4px 12px; padding: 14px 6px; border-bottom: 1px solid var(--rule); }
+.row:last-child { border-bottom: 0; }
+.row.blocking { background: var(--fail-tint); }
+.row .st { font: 600 11px var(--mono); padding-top: 2px; }
+.st.pass { color: var(--pass); } .st.warn { color: var(--warn); } .st.fail { color: var(--fail); }
+.st.not-implemented, .st.not-applicable { color: var(--stub); }
+.row h3 { margin: 0; font-size: 14px; font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
+.row .ev { font: 500 11px var(--mono); color: var(--pass); text-decoration: none; white-space: nowrap; padding-top: 2px; }
+.row .ev:hover, .row .ev:focus-visible { text-decoration: underline; }
+.tag { font: 600 9.5px var(--mono); letter-spacing: .08em; border-radius: 2px; padding: 2px 5px; border: 1px solid; }
+.row > .tag { align-self: start; justify-self: end; }
+.tag.blocking { color: var(--fail); } .tag.draft { color: var(--warn); } .tag.owner { color: var(--stub); }
+.row.comp { grid-template-columns: 52px minmax(0, 1fr) 110px; }
+.meter { display: grid; grid-template-columns: 1fr 38px; gap: 8px; align-items: center; padding-top: 4px; }
+.meter .pct { font: 12px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+
+.outputs { background: var(--panel-dark); color: var(--panel-dark-ink); border-color: var(--panel-dark); }
+.outputs .eyebrow { color: #8d9894; }
+.out-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; margin-top: 10px; }
+.out { border: 1px solid #2c3437; border-radius: 3px; padding: 8px 10px; font-size: 11.5px; }
+.out code { display: block; font: 500 12px var(--mono); color: var(--panel-dark-accent); margin-bottom: 2px; overflow-wrap: anywhere; }
+.out.off { opacity: .45; } .out.off code { color: #9aa3a0; }
+
+.evidence h2, .prov h2 { font-size: 18px; margin: 0 0 4px; }
+.ev-card { border-top: 1px solid var(--rule); padding: 16px 0; scroll-margin-top: 16px; }
+.ev-card:target { background: var(--fail-tint); }
+.ev-card h3 { margin: 0 0 4px; font-size: 15px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.ev-card .remedy { margin: 6px 0; font-size: 13px; }
+.tbl { overflow-x: auto; margin-top: 8px; }
+table { border-collapse: collapse; font-size: 12px; min-width: 50%; }
+th, td { text-align: left; padding: 4px 12px 4px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 500 10.5px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+td { font-variant-numeric: tabular-nums; }
+.metrics { font: 12px var(--mono); color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
+.page-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+@media (max-width: 1080px) { .cols { grid-template-columns: 1fr 1fr; } .cols > .stack:first-child { grid-column: 1 / -1; } }
+@media (max-width: 760px) {
+  .top { grid-template-columns: 1fr; }
+  .top .verdict { border-left: 0; margin-left: 0; padding-left: 0; border-top: 1px solid var(--rule); padding-top: 14px; margin-top: 14px; }
+  .cols { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+
+<div class="strip">
+  <span><b>Scorecard v{{ run.tool_version }}</b></span>
+  <span>{{ run.command }}</span>
+  <span>Run {{ run.started_at | replace("T", " ") | replace("+00:00", " UTC") }}</span>
+</div>
+
+<section class="panel top">
+  <div>
+    <div class="eyebrow">Dataset</div>
+    <h1>{{ profile.title }}</h1>
+    <div class="muted">{{ profile.description }} {{ summary.n_patients | thousands }} patients · {{ summary.modality_coverage | length }} modalities{% if n_files %} · {{ n_files | thousands }} open data files{% endif %}.</div>
+    <div class="chips">
+      <span class="chip">TASK: {{ run.task.id }}</span>
+      <span class="chip">PACK: {{ run.pack.id }}@{{ run.pack.version }}</span>
+      <span class="chip">ADAPTER: {{ profile.provenance.adapter }}</span>
+      {% if profile.provenance.data_release %}<span class="chip">{{ profile.provenance.data_release }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="verdict">
+    <div class="eyebrow">Task-relative verdict</div>
+    <div class="verdict-label {{ verdict_class }}">{{ verdict.label.value | replace("_", " ") }}{% if verdict.provisional %} <span class="badge">PROVISIONAL</span>{% endif %}</div>
+    <div>{{ verdict.reason }}</div>
+    <div class="counts">
+      <span class="ready">{{ verdict.counts.PASS }} PASS</span>
+      <span class="conditional">{{ verdict.counts.WARN }} WARN</span>
+      <span class="not-ready">{{ verdict.counts.FAIL }} FAIL</span>
+      {% if verdict.counts.NOT_IMPLEMENTED %}<span class="muted">{{ verdict.counts.NOT_IMPLEMENTED }} NOT YET ASSESSED</span>{% endif %}
+    </div>
+  </div>
+</section>
+
+<div class="cols">
+  <div class="stack">
+    <section class="panel">
+      <div class="eyebrow">Bridge2AI criteria profile</div>
+      <svg class="radar" viewBox="-28 0 {{ radar.size + 56 }} {{ radar.size }}" width="{{ radar.size + 56 }}" height="{{ radar.size }}" role="img" aria-label="Bridge2AI criteria radar">
+        {% for ring in radar.rings %}<polygon points="{{ ring }}" fill="none" stroke="var(--rule)" stroke-width="1"/>{% endfor %}
+        {% for a in radar.axes %}
+        <line x1="{{ radar.cx }}" y1="{{ radar.cy }}" x2="{{ a.x2 }}" y2="{{ a.y2 }}" stroke="var(--rule)" stroke-width="1"{% if a.score is none %} stroke-dasharray="2 3"{% endif %}/>
+        <text x="{{ a.lx }}" y="{{ a.ly }}" text-anchor="{{ a.anchor }}" class="{{ 'na' if a.score is none }}"><title>{{ a.name }}: {{ 'not assessed' if a.score is none else (a.score | pct) }}</title>{{ a.short }}</text>
+        {% endfor %}
+        {% if radar.polygon %}<polygon points="{{ radar.polygon }}" fill="var(--pass)" fill-opacity=".14" stroke="var(--pass)" stroke-width="1.5"/>{% endif %}
+        {% for a in radar.axes if a.score is not none %}<circle cx="{{ a.px }}" cy="{{ a.py }}" r="3" fill="{{ 'var(--warn)' if a.score < 0.75 else 'var(--pass)' }}"/>{% endfor %}
+      </svg>
+      <dl class="kv">
+        <dt>Weakest axis</dt><dd class="conditional">{{ radar.weakest or "—" }}</dd>
+        <dt>Axes assessed</dt><dd>{{ radar.n_assessed }} of {{ radar.axes | length }}</dd>
+        <dt>Evidence links</dt><dd>{{ n_evidence }}</dd>
+        <dt>Checks run</dt><dd>{{ verdict.checks_run }} of {{ verdict.checks_total }}</dd>
+      </dl>
+      <div class="foot">Dashed spokes: no implemented check informs that criterion yet.</div>
+    </section>
+
+    <section class="panel">
+      <div class="eyebrow">Multimodal linkage · {{ linkage.title }}</div>
+      {% for r in linkage.rows %}
+      <div class="link-row">
+        <span>{{ r.label }}</span>
+        {% if r.available %}
+        <span class="n">{{ r.n | thousands }} · {{ r.pct | pct }}</span>
+        <div class="bar{{ ' warn' if r.pct < 0.5 }}"><i style="width: {{ (r.pct * 100) | round(1) }}%"></i></div>
+        {% else %}
+        <span class="n stubtext">{{ r.note }}</span>
+        <div class="bar"><i style="width: 0"></i></div>
+        {% endif %}
+      </div>
+      {% endfor %}
+      <div class="foot">All {{ linkage.n_loaded }} loaded modalities present for {{ linkage.all_present | thousands }} patients.</div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="list-head"><span class="eyebrow">Data integrity · modality-agnostic</span><span class="eyebrow">{{ integrity | length }} checks</span></div>
+    {% for r in integrity %}
+    <div class="row{{ ' blocking' if r.blocking }}">
+      <span class="st {{ r.status_class }}">{{ r.status_text }}</span>
+      <div>
+        <h3>{{ r.title }}{% if r.blocking %} <span class="tag blocking">BLOCKING</span>{% endif %}{% if r.label %} <span class="tag draft">{{ r.label | upper }}</span>{% endif %}</h3>
+        <p{% if not r.assessed %} class="stubtext"{% endif %}>{{ r.summary if r.assessed else r.description ~ ". Not yet assessed." }}</p>
+      </div>
+      {% if r.assessed %}<a class="ev" href="#{{ r.anchor }}">evidence →</a>{% else %}<span class="tag owner">{{ r.owner | upper }}</span>{% endif %}
+    </div>
+    {% endfor %}
+  </section>
+
+  <div class="stack">
+    <section class="panel">
+      <div class="list-head"><span class="eyebrow">Oncology completeness · domain pack</span><span class="eyebrow">{{ completeness | length }} checks</span></div>
+      {% for r in completeness %}
+      <div class="row comp{{ ' blocking' if r.blocking }}">
+        <span class="st {{ r.status_class }}">{{ r.status_text }}</span>
+        <div>
+          <h3><a href="#{{ r.anchor }}" style="text-decoration:none">{{ r.title }}</a>{% if r.blocking %} <span class="tag blocking">BLOCKING</span>{% endif %}{% if r.label %} <span class="tag draft">DRAFT</span>{% endif %}</h3>
+          <p{% if not r.assessed %} class="stubtext"{% endif %}>{{ r.summary if r.assessed else r.description ~ ". Not yet assessed (owner " ~ r.owner ~ ")." }}</p>
+        </div>
+        <div class="meter">
+          {% if r.score is not none %}
+          <div class="bar {{ r.status_class }}"><i style="width: {{ (r.score * 100) | round(1) }}%"></i></div>
+          <span class="pct">{{ r.score | pct }}</span>
+          {% else %}
+          <div class="bar"><i style="width: 0"></i></div><span class="pct muted">—</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </section>
+
+    <section class="panel outputs">
+      <div class="eyebrow">Outputs</div>
+      <div class="out-grid">
+        {% for o in outputs %}
+        <div class="out{{ ' off' if not o.written }}"><code>{{ o.name }}</code>{{ o.caption if o.written else "not built yet" }}</div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+
+<section class="panel evidence">
+  <h2>Evidence</h2>
+  <div class="muted">What each finding rests on. Every number here comes from this run.</div>
+  {% for r in rows %}
+  <article class="ev-card" id="{{ r.anchor }}">
+    <h3><span class="st {{ r.status_class }} mono">{{ r.status_text }}</span> {{ r.title }} <span class="muted mono" style="font-size:11px">{{ r.id }} · owner {{ r.owner }}{% if r.severity %} · {{ r.severity }}{% endif %}</span></h3>
+    <div>{{ r.summary }}</div>
+    {% if r.remediation %}<p class="remedy"><b>Remediation.</b> {{ r.remediation }}</p>{% endif %}
+    {% for e in r.evidence %}
+      <div class="tbl">
+        <div class="eyebrow" style="margin-top:10px">{{ e.label }}</div>
+        {% if e.value is not none %}<div>{{ e.value }}</div>{% endif %}
+        {% if e.table %}
+        <table>
+          <thead><tr>{% for k in e.table[0].keys() %}<th>{{ k | replace("_", " ") }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for row in e.table %}<tr>{% for v in row.values() %}<td>{{ "—" if v is none else v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        </table>
+        {% endif %}
+        {% if e.patient_ids %}<div class="metrics">Example patients: {{ e.patient_ids | join(", ") }}</div>{% endif %}
+      </div>
+    {% endfor %}
+    {% if r.metrics %}<div class="metrics">{% for k, v in r.metrics.items() %}{{ k }}={{ v }}{{ "  ·  " if not loop.last }}{% endfor %}</div>{% endif %}
+  </article>
+  {% endfor %}
+</section>
+
+<section class="panel prov">
+  <h2>Provenance</h2>
+  <dl class="kv" style="grid-template-columns: max-content 1fr; border-top: 0">
+    <dt>Repository</dt><dd style="text-align:left">{{ profile.provenance.repository }} · adapter {{ profile.provenance.adapter }} v{{ profile.provenance.adapter_version }}</dd>
+    <dt>Data release</dt><dd style="text-align:left">{{ profile.provenance.data_release or "unknown" }}</dd>
+    <dt>Retrieved</dt><dd style="text-align:left">{{ profile.provenance.retrieved_at }}</dd>
+    <dt>Snapshot SHA-256</dt><dd style="text-align:left; overflow-wrap:anywhere">{{ profile.provenance.content_sha256 }}</dd>
+    <dt>Source records</dt><dd style="text-align:left">{{ profile.provenance.n_source_records | thousands }} cases{% for m, n in profile.provenance.source_files.items() %} · {{ n | thousands }} {{ m | replace("_", " ") }} files{% endfor %}</dd>
+    <dt>Missing-value strings normalized</dt><dd style="text-align:left">{% for k, v in profile.provenance.sentinels_normalized.items() %}"{{ k }}" × {{ v | thousands }}{{ ", " if not loop.last }}{% else %}none{% endfor %}</dd>
+  </dl>
+  {% if profile.provenance.notes %}<ul class="muted">{% for n in profile.provenance.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+</section>
+
+<div class="strip page-foot"><span>AI-Readiness Scorecard · University of Illinois Cancer Center</span><span>NCI Data Jamboree 2026</span></div>
+</main>
+</body>
+</html>

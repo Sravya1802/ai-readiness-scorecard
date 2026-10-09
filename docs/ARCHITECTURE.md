@@ -138,9 +138,14 @@ Keeping fetch separate from build means a run can be reproduced from a saved sna
 ```python
 @register_check
 class MyCheck(Check):
-    id = "integrity.my_check"; title = "..."; family = Family.INTEGRITY
-    criteria = (Criterion.CHARACTERIZATION,)   # Bridge2AI axes it informs
-    owner = "member-2"; order = 60; description = "..."
+    id = "integrity.my_check"
+    title = "..."
+    family = Family.INTEGRITY
+    criteria = (Criterion.CHARACTERIZATION,)  # Bridge2AI axes it informs
+    owner = "member-2"
+    order = 60
+    description = "..."
+
     def run(self, profile, task) -> CheckResult: ...
 ```
 

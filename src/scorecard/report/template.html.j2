@@ -97,6 +97,17 @@ h1 { font-size: 30px; line-height: 1.15; margin: 6px 0 6px; letter-spacing: -.01
 .out code { display: block; font: 500 12px var(--mono); color: var(--panel-dark-accent); margin-bottom: 2px; overflow-wrap: anywhere; }
 .out.off { opacity: .45; } .out.off code { color: #9aa3a0; }
 
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+h2.q { font-size: 19px; line-height: 1.3; margin: 6px 0 4px; }
+.cohort-n { display: flex; gap: 28px; margin: 12px 0 6px; flex-wrap: wrap; }
+.cohort-n b { display: block; font: 600 22px var(--mono); font-variant-numeric: tabular-nums; }
+.cohort-n span { font-size: 12px; color: var(--muted); }
+.rules { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); }
+.missing { margin: 8px 0 0; padding-left: 20px; font-size: 13px; }
+.missing li { margin-bottom: 8px; }
+.notice { border-left: 3px solid var(--warn); font-size: 13px; }
+@media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+
 .evidence h2, .prov h2 { font-size: 18px; margin: 0 0 4px; }
 .ev-card { border-top: 1px solid var(--rule); padding: 16px 0; scroll-margin-top: 16px; }
 .ev-card:target { background: var(--fail-tint); }
@@ -152,6 +163,42 @@ td { font-variant-numeric: tabular-nums; }
   </div>
 </section>
 
+{% if cohort or missing %}
+<div class="two">
+  {% if cohort %}
+  <section class="panel">
+    <div class="eyebrow">Question and cohort</div>
+    <h2 class="q">{{ cohort.question }}</h2>
+    {% if cohort.population %}<div class="muted">{{ cohort.population }}</div>{% endif %}
+    <div class="cohort-n">
+      <div><b>{{ cohort.eligible }}</b><span>eligible</span></div>
+      <div><b>{{ cohort.not_eligible }}</b><span>not eligible</span></div>
+      <div><b>{{ cohort.unknown }}</b><span>unknown</span></div>
+    </div>
+    <ul class="rules">{% for rule in cohort.rules %}<li>{{ rule }}</li>{% endfor %}</ul>
+    <div class="foot">Unknown: a rule could not be decided because the value is missing. Unknown patients are counted, never dropped silently.{% if review and review.status != "reviewed" %} Cutoffs and rules are drafts awaiting clinical review.{% elif review %} Reviewed by {{ review.reviewer }} on {{ review.review_date }}.{% endif %}</div>
+  </section>
+  {% endif %}
+  <section class="panel">
+    <div class="eyebrow">What is missing</div>
+    {% if missing %}
+    <ol class="missing">
+      {% for m in missing %}
+      <li><b>{{ m.title }}</b>{% if m.blocking %} <span class="tag blocking">BLOCKING</span>{% endif %}<br>{{ m.remediation or m.finding }}</li>
+      {% endfor %}
+    </ol>
+    {% else %}<div class="muted">Nothing: every check that ran passed.</div>{% endif %}
+    {% if narrower %}
+    <div class="eyebrow" style="margin-top:12px">Narrower questions this dataset may still support</div>
+    <ul class="rules">{% for q in narrower %}<li>{{ q }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+</div>
+{% endif %}
+{% if not privacy.patient_level_output %}
+<div class="panel notice">Counts and percentages only. {{ privacy.basis }}{% if privacy.min_cell_count %} Counts below {{ privacy.min_cell_count }} are shown as "&lt;{{ privacy.min_cell_count }}".{% endif %} Read this report before sharing it: a small count can sometimes be worked out from the other numbers.</div>
+{% endif %}
+
 <div class="cols">
   <div class="stack">
     <section class="panel">
@@ -188,10 +235,26 @@ td { font-variant-numeric: tabular-nums; }
         {% endif %}
       </div>
       {% endfor %}
-      <div class="foot">All {{ linkage.n_loaded }} loaded modalities present for {{ linkage.all_present | thousands }} patients.</div>
+      <div class="foot">{% if linkage.note %}{{ linkage.note }}{% else %}All {{ linkage.n_loaded }} loaded modalities present for {{ linkage.all_present | thousands }} patients.{% endif %}</div>
     </section>
   </div>
 
+  <div class="stack">
+  {% if task_fit %}
+  <section class="panel">
+    <div class="list-head"><span class="eyebrow">Task fit · this question</span><span class="eyebrow">{{ task_fit | length }} checks</span></div>
+    {% for r in task_fit %}
+    <div class="row{{ ' blocking' if r.blocking }}">
+      <span class="st {{ r.status_class }}">{{ r.status_text }}</span>
+      <div>
+        <h3>{{ r.title }}{% if r.blocking %} <span class="tag blocking">BLOCKING</span>{% endif %}</h3>
+        <p>{{ r.summary }}</p>
+      </div>
+      <a class="ev" href="#{{ r.anchor }}">evidence →</a>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
   <section class="panel">
     <div class="list-head"><span class="eyebrow">Data integrity · modality-agnostic</span><span class="eyebrow">{{ integrity | length }} checks</span></div>
     {% for r in integrity %}
@@ -205,6 +268,7 @@ td { font-variant-numeric: tabular-nums; }
     </div>
     {% endfor %}
   </section>
+  </div>
 
   <div class="stack">
     <section class="panel">

@@ -40,6 +40,10 @@ class Adapter(ABC):
     # (for example population registries such as SEER).
     linkable: ClassVar[bool] = True
     owner: ClassVar[str] = "lead"
+    # False for sources whose rows must not be copied to disk by this tool (SEER).
+    allow_snapshot: ClassVar[bool] = True
+    # Local folder of extra source files to join, for adapters that support one.
+    supplement_dir: Path | None = None
 
     @abstractmethod
     def fetch_raw(self, dataset: str, *, limit: int | None = None) -> dict:

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from datetime import datetime, timezone
 
@@ -26,7 +27,10 @@ import pandas as pd
 import requests
 
 from scorecard.adapters.base import Adapter, register_adapter
-from scorecard.profile import DatasetProfile, FeatureMeta, Provenance, Role
+from scorecard.adapters.fieldmap import load_fieldmap
+from scorecard.adapters.tcga_supplement import apply_supplement, read_supplement
+from scorecard.adapters.vocabulary import DERIVED, EXTRA_COLUMNS, EXTRA_NAMES, derive
+from scorecard.profile import Availability, DatasetProfile, FeatureMeta, Provenance, Role
 
 API = "https://api.gdc.cancer.gov"
 PAGE_SIZE = 500
@@ -39,6 +43,7 @@ SENTINELS = frozenset({"not reported", "unknown", "not allowed to collect", "--"
 MODALITY_DATA_TYPES = {
     "gene_expression": "Gene Expression Quantification",
     "somatic_mutation": "Masked Somatic Mutation",
+    "copy_number": "Gene Level Copy Number",
 }
 
 _DX_FIELDS = [
@@ -81,6 +86,18 @@ CASE_FIELDS = [
     "follow_ups.days_to_follow_up",
     "follow_ups.molecular_tests.gene_symbol",
     "follow_ups.molecular_tests.test_result",
+]
+
+# Extra fields that let the API alone fill drug names, treatment timing and intent, and
+# split HER2 by test method. The names are from the GDC data dictionary but have not
+# been checked against the live API, so they are requested only when
+# SCORECARD_GDC_EXTENDED_FIELDS=1. build_profile uses them when a snapshot has them.
+OPTIONAL_CASE_FIELDS = [
+    "diagnoses.treatments.therapeutic_agents",
+    "diagnoses.treatments.days_to_treatment_start",
+    "diagnoses.treatments.days_to_treatment_end",
+    "diagnoses.treatments.treatment_intent_type",
+    "follow_ups.molecular_tests.molecular_analysis_method",
 ]
 
 # Receptor status genes recorded in follow_ups.molecular_tests, keyed by IR column.
@@ -149,6 +166,11 @@ COLUMNS: list[tuple[str, Role, str, str]] = [
         "Days from index to last follow-up (latest of the diagnosis and follow-up records)",
     ),
 ]
+
+BASE_NAMES = [name for name, *_ in COLUMNS]
+# The shared vocabulary beyond the original columns (adapters/vocabulary.py).
+COLUMNS += [(name, role, "", description) for name, role, description, _ in EXTRA_COLUMNS]
+_API_TREATMENT = "diagnoses.treatments.treatment_type + treatment_or_therapy"
 
 _NUMERIC = [
     "age_at_index",
@@ -249,6 +271,66 @@ def _treatment_types(dx: dict, counts: dict[str, int]) -> str | None:
     return "; ".join(sorted(given)) if given else "none"
 
 
+def _api_extras(case: dict, dx: dict, counts: dict[str, int], fieldmap: dict) -> dict:
+    """Treatment yes/no per class and HER2 by method, from the API records alone.
+
+    "no" is only ever set from a record that says no. A patient with no record
+    for a treatment class is left empty: not recorded is not the same as not given.
+    """
+    out: dict = {}
+    answers: dict[str, set[str]] = {}
+    agents: set[str] = set()
+    neoadjuvant = None
+    endocrine_start, endocrine_end = [], []
+    for treatment in dx.get("treatments") or []:
+        kind = str(_clean(treatment.get("treatment_type"), counts) or "").lower()
+        answer = str(_clean(treatment.get("treatment_or_therapy"), counts) or "").lower()
+        classes = [
+            name
+            for name, keywords in fieldmap["gdc_treatment_types"].items()
+            if any(keyword in kind for keyword in keywords)
+        ]
+        for name in classes:
+            if answer in ("yes", "no"):
+                answers.setdefault(name, set()).add(answer)
+        if answer != "yes":
+            continue
+        agent = _clean(treatment.get("therapeutic_agents"), counts)
+        if agent:
+            agents.add(str(agent).lower())
+        intent = str(treatment.get("treatment_intent_type") or "").lower()
+        if intent:
+            is_neo = any(word in intent for word in fieldmap["gdc_neoadjuvant_intents"])
+            neoadjuvant = "yes" if is_neo or neoadjuvant == "yes" else "no"
+        if "endocrine_therapy" in classes:
+            if treatment.get("days_to_treatment_start") is not None:
+                endocrine_start.append(treatment["days_to_treatment_start"])
+            if treatment.get("days_to_treatment_end") is not None:
+                endocrine_end.append(treatment["days_to_treatment_end"])
+    for name in fieldmap["gdc_treatment_types"]:
+        found = answers.get(name, set())
+        out[name] = "yes" if "yes" in found else ("no" if "no" in found else None)
+    out["neoadjuvant_therapy"] = neoadjuvant
+    out["drug_names"] = "; ".join(sorted(agents)) if agents else None
+    out["endocrine_therapy_start_days"] = min(endocrine_start) if endocrine_start else None
+    out["endocrine_therapy_end_days"] = max(endocrine_end) if endocrine_end else None
+
+    # HER2 by method, so an equivocal IHC with no FISH follow-up stays visible.
+    by_method: dict[str, set] = {"her2_ihc_status": set(), "her2_fish_status": set()}
+    for follow_up in case.get("follow_ups") or []:
+        for test in follow_up.get("molecular_tests") or []:
+            if test.get("gene_symbol") != BIOMARKER_GENES["her2_status"]:
+                continue
+            method = str(test.get("molecular_analysis_method") or "").lower()
+            if "ihc" in method or "immunohisto" in method:
+                by_method["her2_ihc_status"].add(test.get("test_result"))
+            elif "ish" in method or "in situ" in method:
+                by_method["her2_fish_status"].add(test.get("test_result"))
+    for column, results in by_method.items():
+        out[column] = next((r for r in _RESULT_PRIORITY if r in results), None)
+    return out
+
+
 def _biomarker_status(case: dict, gene: str) -> str | None:
     results = {
         test.get("test_result")
@@ -259,7 +341,7 @@ def _biomarker_status(case: dict, gene: str) -> str | None:
     return next((r for r in _RESULT_PRIORITY if r in results), None)
 
 
-def _flatten_case(case: dict, counts: dict[str, int]) -> dict:
+def _flatten_case(case: dict, counts: dict[str, int], fieldmap: dict | None = None) -> dict:
     demographic = case.get("demographic") or {}
     dx = _primary_diagnosis(case.get("diagnoses") or []) or {}
 
@@ -302,7 +384,35 @@ def _flatten_case(case: dict, counts: dict[str, int]) -> dict:
         "vital_status": demo("vital_status"),
         "days_to_death": demo("days_to_death"),
         "days_to_last_follow_up": max(follow_up_days) if follow_up_days else None,
+        **(_api_extras(case, dx, counts, fieldmap) if fieldmap else {}),
     }
+
+
+def _feature_meta(name, role, source, description, sources, has_method) -> FeatureMeta:
+    """Describe one column, including whether TCGA carries it and whether it was loaded."""
+    availability, note, field = Availability.LOADED, None, source or None
+    if name in sources:
+        availability, note, supplement_field = sources[name]
+        field = supplement_field or field
+    elif name in ("her2_ihc_status", "her2_fish_status") and not has_method:
+        availability = Availability.NOT_LOADED
+        note = "Needs the patient table (--supplement) or the API test method field."
+    elif name in DERIVED:
+        field = "derived from " + ", ".join(DERIVED[name])
+    elif name in EXTRA_NAMES:
+        field = _API_TREATMENT
+    if name in ("drug_names", "endocrine_therapy_start_days", "endocrine_therapy_end_days"):
+        # Loaded from the API only when the optional treatment fields were fetched.
+        field = field or "diagnoses.treatments (optional fields)"
+    return FeatureMeta(
+        name=name,
+        modality="clinical",
+        role=role,
+        source_field=field,
+        description=description,
+        availability=availability,
+        note=note,
+    )
 
 
 @register_adapter
@@ -315,7 +425,8 @@ class GDCAdapter(Adapter):
         cases = _paginate(
             "cases",
             _in("project.project_id", [dataset]),
-            CASE_FIELDS,
+            CASE_FIELDS
+            + (OPTIONAL_CASE_FIELDS if os.environ.get("SCORECARD_GDC_EXTENDED_FIELDS") else []),
             limit=limit,
             sort="submitter_id:asc",
         )
@@ -359,11 +470,28 @@ class GDCAdapter(Adapter):
         dataset = raw["dataset"]
         sentinel_counts: dict[str, int] = {}
 
-        rows = [_flatten_case(case, sentinel_counts) for case in cases]
+        fieldmap = load_fieldmap("tcga_brca")
+        rows = [_flatten_case(case, sentinel_counts, fieldmap) for case in cases]
         features = pd.DataFrame.from_records(rows).set_index("patient_id").sort_index()
-        features = features[[name for name, *_ in COLUMNS]]
+        features = features.reindex(columns=[name for name, *_ in COLUMNS]).astype(
+            {name: object for name in EXTRA_NAMES}
+        )
         for column in _NUMERIC:
             features[column] = pd.to_numeric(features[column], errors="coerce")
+
+        # Local supplement files (never downloaded here): Biotab tables, TCGA-CDR,
+        # published subtype and HRD tables.
+        supplement = raw.get("supplement")
+        if supplement is None and self.supplement_dir is not None:
+            supplement = read_supplement(self.supplement_dir, fieldmap)
+        sources = apply_supplement(features, supplement, fieldmap, sentinel_counts)
+        features = derive(features)
+        has_method = any(
+            "molecular_analysis_method" in test
+            for case in cases
+            for follow_up in case.get("follow_ups") or []
+            for test in follow_up.get("molecular_tests") or []
+        )
 
         modalities = pd.DataFrame({"clinical": True}, index=features.index)
         for modality, files in raw["modality_files"].items():
@@ -382,8 +510,29 @@ class GDCAdapter(Adapter):
             notes.append(f"{n_no_dx} cases have no diagnosis record.")
         if raw.get("limit"):
             notes.append(f"Development snapshot limited to the first {raw['limit']} cases.")
+        supplement_files = {
+            name: [f["file"] for f in table["files"]]
+            for name, table in (supplement or {}).get("tables", {}).items()
+        }
+        if supplement_files:
+            notes.append(f"Supplement tables read from local files: {supplement_files}.")
+        else:
+            notes.append(
+                "No supplement folder given: variables that live in the Clinical Supplement, "
+                "TCGA-CDR and published tables are declared but not loaded."
+            )
+        if not fieldmap.get("confirmed"):
+            notes.append(
+                "Field map tcga_brca.yaml is unconfirmed: source column names have not been "
+                "checked against the downloaded files."
+            )
 
         content = {"cases": cases, "modality_files": raw["modality_files"]}
+        if supplement_files:
+            content["supplement"] = {
+                name: [f["sha256"] for f in table["files"]]
+                for name, table in supplement["tables"].items()
+            }
         provenance = Provenance(
             adapter=self.name,
             adapter_version=self.version,
@@ -406,20 +555,14 @@ class GDCAdapter(Adapter):
 
         return DatasetProfile(
             dataset_id=dataset,
-            title=f"GDC · {dataset}",
+            title=f"GDC · {dataset}" + (" (SYNTHETIC)" if "SYNTHETIC" in dataset else ""),
             description=(
                 "Open-access clinical records from the Genomic Data Commons, one row per "
                 "patient, with per-patient presence of gene expression and somatic mutation files."
             ),
             features=features,
             feature_meta={
-                name: FeatureMeta(
-                    name=name,
-                    modality="clinical",
-                    role=role,
-                    source_field=source,
-                    description=description,
-                )
+                name: _feature_meta(name, role, source, description, sources, has_method)
                 for name, role, source, description in COLUMNS
             },
             modalities=modalities,

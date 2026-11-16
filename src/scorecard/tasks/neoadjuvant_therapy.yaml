@@ -1,0 +1,84 @@
+# Question 2 of 5 (Dr. Gadi): chemotherapy before surgery, alone or with
+# immune or targeted therapy?
+#
+# STATUS: DRAFT, short form. This file only tests whether the must-have
+# variables exist (cohort and completeness checks). It sets no outcome or
+# treatment comparison. Every cutoff is a starting value.              REVIEW
+
+id: neoadjuvant-therapy
+number: 2
+title: Neoadjuvant chemotherapy, alone or with immune or targeted therapy
+question: Should the patient have chemotherapy before surgery, alone or with immune or targeted therapy?
+description: >
+  Quick pass: does the dataset record who had systemic therapy before surgery,
+  what was given, the receptor subtype that decides the add-on therapy, and the
+  response?
+pack: oncology-completeness
+
+clinical_review:
+  status: draft
+  reviewer: null
+  review_date: null
+  open_questions:
+    - Is stage I to III the right population, or stage II to III only?
+    - Is pathologic complete response the outcome to require? (KEYNOTE-522 used pCR and event-free survival as co-primary endpoints.)
+
+population:
+  description: Stage I to III, no metastatic disease at diagnosis
+  include:
+    - {column: stage_group, op: in, values: [I, II, III]}            # REVIEW
+  exclude:
+    - {column: metastatic_at_diagnosis, op: in, values: ["yes"]}
+
+variables:
+  - {name: stage_group, column: ajcc_pathologic_stage, uninformative: [Stage X], role: cohort}
+  - {name: metastatic_at_diagnosis, column: metastatic_at_diagnosis, role: cohort}
+  - {name: neoadjuvant_therapy, column: neoadjuvant_therapy, role: treatment}
+  - {name: chemotherapy, column: chemotherapy, role: treatment}
+  - name: drug_names
+    column: drug_names
+    role: treatment
+    expected_when: [{column: chemotherapy, op: in, values: ["yes"]}]
+  - name: targeted_therapy
+    column: targeted_therapy
+    role: treatment
+    expected_when: [{column: her2_status, op: in, values: [Positive]}]
+  - name: immunotherapy
+    column: immunotherapy
+    role: treatment
+    # Expected for stage II or III triple-negative disease only: KEYNOTE-522
+    # (Schmid et al., NEJM 2020;382:810-821) enrolled previously untreated
+    # stage II or III TNBC, so stage I patients are not counted as missing it.
+    expected_when:
+      - {column: stage_group, op: in, values: [II, III]}
+      - {column: er_status, op: in, values: [Negative]}
+      - {column: pr_status, op: in, values: [Negative]}
+      - {column: her2_status, op: in, values: [Negative]}
+  - {name: surgery, column: surgery, role: treatment}
+  - {name: er_status, column: er_status, role: predictor}
+  - {name: pr_status, column: pr_status, role: predictor}
+  - {name: her2_status, column: her2_status, role: predictor}
+  - name: her2_fish
+    column: her2_fish_status
+    role: predictor
+    expected_when: [{column: her2_ihc_status, op: in, values: [Equivocal]}]
+  - {name: tumor_size, any_of: [tumor_size_mm, ajcc_pathologic_t], uninformative: [TX], role: predictor}
+  - {name: nodal_status, any_of: [nodes_positive, ajcc_pathologic_n], uninformative: [NX], role: predictor}
+  - {name: grade, column: tumor_grade, uninformative: [GX, Not Applicable], role: predictor}
+  - {name: age_at_diagnosis, column: age_at_index, role: predictor}
+  - {name: pathologic_complete_response, column: pathologic_complete_response, role: outcome, note: No adapter emits this yet.}
+
+checks:
+  - integrity.missingness
+  - task_fit.cohort_identifiable
+  - completeness.conditional
+
+params:
+  cohort_identifiable:
+    decided_fraction: {pass: 0.90, warn: 0.75}
+  conditional_completeness:
+    required: {pass: 0.90, warn: 0.70}
+    recommended: {pass: 0.70, warn: 0.40}
+    # A required treatment or outcome variable the dataset does not carry at all
+    # (and has no stand-in for) blocks the verdict: the question cannot be asked.
+    blocking_if_absent_roles: [treatment, outcome]

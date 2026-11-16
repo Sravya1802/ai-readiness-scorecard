@@ -1,9 +1,10 @@
 from scorecard.checks import Family, Severity, Status, get_check, list_checks
 
 
-def test_registry_has_ten_checks_in_display_order():
-    checks = list_checks()
+def test_registry_keeps_the_original_ten_checks_in_display_order():
+    checks = [c for c in list_checks() if not c.opt_in]
     assert len(checks) == 10
+    assert len(list_checks()) == 16  # plus the six opt-in checks for the clinical questions
     assert [c.family for c in checks[:5]] == [Family.INTEGRITY] * 5
     assert checks[0].id == "integrity.missingness"
     assert checks[5].id == "completeness.stage_histology_grade"

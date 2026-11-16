@@ -41,7 +41,9 @@ class Missingness(Check):
         alpha = p("alpha", 0.05)
         min_site_size = p("min_site_size", 10)
 
-        columns = profile.columns_with_role(Role.FEATURE)
+        # Variables the source does not carry are scored by the completeness
+        # checks; counting them here would report the same gap twice.
+        columns = profile.columns_with_role(Role.FEATURE, loaded_only=True)
         missing = profile.features[columns].isna()
         overall = float(missing.to_numpy().mean()) if columns else 0.0
         per_feature = missing.mean().sort_values(ascending=False)
@@ -54,9 +56,10 @@ class Missingness(Check):
             site = profile.site
             sizes = site.value_counts()
             tests["site"] = site.where(site.map(sizes) >= min_site_size, "other")
-        target = task.survival_target(profile)["event"]
-        if target.notna().any():
-            tests["target"] = target
+        if task.survival is not None:
+            target = task.survival_target(profile)["event"]
+            if target.notna().any():
+                tests["target"] = target
 
         partly_missing = [c for c in columns if 0 < per_feature[c] < 1]
         n_tests = max(len(partly_missing), 1)

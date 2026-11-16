@@ -43,6 +43,9 @@ class Severity(str, Enum):
 class Family(str, Enum):
     INTEGRITY = "integrity"
     COMPLETENESS = "completeness"
+    # Checks that only make sense for one clinical question: its cohort,
+    # treatment groups, outcome and reference population.
+    TASK_FIT = "task_fit"
 
 
 class Criterion(str, Enum):
@@ -104,6 +107,8 @@ class Check(ABC):
     # Position within its family on the data card (lower first).
     order: ClassVar[int] = 100
     implemented: ClassVar[bool] = True
+    # Opt-in checks run only for tasks that list them under `checks:`.
+    opt_in: ClassVar[bool] = False
 
     @abstractmethod
     def run(self, profile: DatasetProfile, task: Task) -> CheckResult: ...
@@ -120,6 +125,24 @@ class Check(ABC):
             summary=summary,
             **kwargs,
         )
+
+
+def grade(value: float | None, pass_at: float, warn_at: float, *, lower_is_better: bool = False):
+    """PASS at or beyond pass_at, WARN at or beyond warn_at, else FAIL. None fails."""
+    if value is None:
+        return Status.FAIL
+    if lower_is_better:
+        value, pass_at, warn_at = -value, -pass_at, -warn_at
+    if value >= pass_at:
+        return Status.PASS
+    return Status.WARN if value >= warn_at else Status.FAIL
+
+
+_RANK = {Status.PASS: 0, Status.WARN: 1, Status.FAIL: 2}
+
+
+def worst(statuses: list[Status]) -> Status:
+    return max(statuses, key=_RANK.__getitem__) if statuses else Status.PASS
 
 
 class StubCheck(Check):

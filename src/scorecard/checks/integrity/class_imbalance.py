@@ -27,9 +27,13 @@ class ClassImbalance(Check):
     description = "Reported as minority-class count, not just ratio"
 
     def run(self, profile: DatasetProfile, task: Task) -> CheckResult:
+        if task.survival is None:
+            return self.result(
+                Status.NOT_APPLICABLE, f"Task {task.id!r} has no survival target to balance."
+            )
         warn_below = task.param("class_imbalance", "min_minority_warn", 100)
         fail_below = task.param("class_imbalance", "min_minority_fail", 30)
-        horizon = task.target.horizon_days
+        horizon = task.survival.horizon_days
         years = round(horizon / 365.25, 1)
 
         target = task.survival_target(profile)
@@ -79,16 +83,17 @@ class ClassImbalance(Check):
         else:
             status, severity = Status.PASS, None
 
+        show = profile.privacy.count
         summary = (
-            f"Minority class n = {minority} ({minority_name}) of {len(labelled)} labelled; "
-            f"{n_events} deaths in total."
+            f"Minority class n = {show(minority)} ({minority_name}) of {show(len(labelled))} "
+            f"labelled; {show(n_events)} deaths in total."
         )
         if status is Status.FAIL:
             summary += " Too few to train or validate."
         elif status is Status.WARN:
             summary += " Degrading, not blocking."
         if len(unusable):
-            summary += f" {len(unusable)} patients have an unusable target."
+            summary += f" {show(len(unusable))} patients have an unusable target."
 
         return self.result(
             status,

@@ -1,0 +1,190 @@
+# Question 1 of 5 (Dr. Gadi): will the patient benefit from chemotherapy?
+#
+# STATUS: DRAFT. Every cutoff and clinical rule below is a starting value and
+# needs clinician sign-off before the verdicts are presented. Lines tagged
+# REVIEW are the ones most worth a clinician's attention. When reviewed, fill
+# in clinical_review below.
+#
+# Evidence behind the population and confounders (see docs/FIVE_QUESTIONS.md):
+#   TAILORx, Sparano et al., NEJM 2018;379:111-121: HR+/HER2- node-negative.
+#   RxPONDER, Kalinsky et al., NEJM 2021 (doi:10.1056/NEJMoa2108873): HR+/HER2-
+#     with 1 to 3 positive nodes; chemotherapy benefit differed by menopausal
+#     status, which is why menopausal_status is a required confounder.
+#   Pan et al., NEJM 2017;377:1836-46: ER+ recurrences continue at a steady rate
+#     from 5 to 20 years, which is why follow-up cutoffs are long.
+#
+# Column names are the shared vocabulary every adapter emits
+# (src/scorecard/adapters/vocabulary.py). Thresholds live under `params`.
+
+id: chemo-benefit
+number: 1
+title: Chemotherapy benefit in ER+/HER2- early breast cancer
+question: Will the patient benefit from chemotherapy?
+description: >
+  Among patients with ER-positive, HER2-negative early-stage breast cancer, who
+  benefits from adding adjuvant chemotherapy to endocrine therapy? This is a
+  treatment-effect question, not plain risk prediction, so it needs comparable
+  treated and untreated patients and the variables that drive who gets treated.
+pack: oncology-completeness
+
+clinical_review:
+  status: draft
+  reviewer: null            # Dr. Gadi, once reviewed
+  review_date: null
+  open_questions:
+    - Is 0 to 3 positive nodes the right cutoff, or should node-negative and node-positive be two tasks?
+    - Should the cohort require ER-positive only, or ER and/or PR positive?
+    - Is distant recurrence the right primary outcome, and which stand-ins are acceptable?
+    - What minimum follow-up would you trust for this question?
+    - Should neoadjuvant patients be excluded or handled as their own group?
+    - Which confounders are must-have versus nice-to-have (comorbidity, performance status, insurance)?
+    - Is a research-derived risk score from RNA-seq an acceptable stand-in for a commercial assay?
+    - Should premenopausal and postmenopausal patients be scored separately?
+
+# Who the question is about. A patient with a missing value on a rule counts as
+# "unknown", never as excluded; the cohort check scores the share of unknowns.
+population:
+  description: ER-positive, HER2-negative, stage I to III, 0 to 3 positive nodes, had surgery, no neoadjuvant therapy, no metastatic disease
+  include:
+    - {column: er_status, op: in, values: [Positive]}
+    - {column: her2_status, op: in, values: [Negative]}
+    - {column: stage_group, op: in, values: [I, II, III]}
+    - {column: nodes_positive, op: between, values: [0, 3]}        # REVIEW
+    - {column: surgery, op: in, values: ["yes"]}
+  exclude:
+    - {column: metastatic_at_diagnosis, op: in, values: ["yes"]}
+    - {column: neoadjuvant_therapy, op: in, values: ["yes"]}       # REVIEW
+
+treatment:
+  column: chemotherapy
+  title: Chemotherapy
+  treated: ["yes"]
+  untreated: ["no"]
+  confounders:              # REVIEW: must-have versus nice-to-have
+    - age_at_index
+    - menopausal_status
+    - tumor_grade
+    - nodes_positive
+    - pr_status
+    - endocrine_therapy
+    - race
+    - genomic_risk_score
+
+target:
+  kind: time_to_event
+  primary:
+    name: distant_recurrence
+    title: Distant recurrence
+    event_column: distant_recurrence_event
+    time_column: distant_recurrence_time_days
+  proxies:                  # used only when the primary is unavailable; always a caution
+    - {name: progression_free_interval, title: Progression-free interval, event_column: pfi_event, time_column: pfi_time_days}
+    - {name: disease_free_interval, title: Disease-free interval, event_column: dfi_event, time_column: dfi_time_days}
+    - {name: overall_survival, title: Overall survival, event_column: os_event, time_column: os_time_days}   # REVIEW
+
+# need: required | recommended.  role: cohort | treatment | outcome | predictor | confounder.
+# expected_when: the value is only expected for patients who meet the rule;
+# completeness is measured among those patients only.
+variables:
+  - {name: er_status, column: er_status, role: cohort}
+  - {name: her2_status, column: her2_status, role: cohort}
+  - name: her2_fish
+    column: her2_fish_status
+    role: cohort
+    expected_when: [{column: her2_ihc_status, op: in, values: [Equivocal]}]
+  - {name: stage_group, column: ajcc_pathologic_stage, uninformative: [Stage X], role: cohort}
+  - {name: nodes_positive, column: nodes_positive, role: cohort, note: A count is needed. N category alone cannot separate 1 to 3 from 4 or more.}
+  - {name: surgery, column: surgery, role: cohort}
+  - {name: neoadjuvant_therapy, column: neoadjuvant_therapy, role: cohort}
+  - {name: metastatic_at_diagnosis, column: metastatic_at_diagnosis, role: cohort}
+  - {name: pr_status, column: pr_status, role: predictor}
+  - {name: tumor_size, any_of: [tumor_size_mm, ajcc_pathologic_t], uninformative: [TX], role: predictor, note: T category is accepted when size in mm is not recorded.}
+  - {name: grade, column: tumor_grade, uninformative: [GX, Not Applicable], role: predictor}
+  - {name: age_at_diagnosis, column: age_at_index, role: predictor}
+  - name: menopausal_status
+    column: menopausal_status
+    role: predictor
+    expected_when: [{column: sex, op: in, values: [female]}]
+  - name: genomic_risk
+    column: genomic_risk_score
+    role: predictor
+    substitutes: ["modality:gene_expression"]
+    note: A commercial recurrence score, or gene expression from which a research-grade score can be derived. A derived score is a caution, not a pass.
+  - {name: ki67, column: ki67, need: recommended, role: predictor}
+  - {name: histology, column: primary_diagnosis, need: recommended, role: predictor}
+  - {name: chemotherapy, column: chemotherapy, role: treatment}
+  - name: chemo_regimen
+    column: drug_names
+    need: recommended
+    role: treatment
+    expected_when: [{column: chemotherapy, op: in, values: ["yes"]}]
+  - name: endocrine_therapy
+    column: endocrine_therapy
+    role: confounder
+    expected_when: [{column: er_status, op: in, values: [Positive]}]
+  - {name: radiation, column: radiation_therapy, need: recommended, role: confounder}
+  - {name: race, column: race, role: confounder, note: Also used in the representativeness check.}
+  - {name: comorbidity, column: comorbidity_index, need: recommended, role: confounder, note: Drives who gets chemotherapy.}
+  - {name: treating_site, column: tissue_source_site, need: recommended, role: confounder}
+  - name: distant_recurrence
+    column: distant_recurrence_event
+    role: outcome
+    substitutes: [pfi_event, dfi_event]
+  - {name: followup_time, column: os_time_days, role: outcome}
+
+checks:
+  - integrity.missingness
+  - task_fit.cohort_identifiable
+  - completeness.conditional
+  - task_fit.outcome_adequacy
+  - task_fit.sample_size
+  - task_fit.treatment_adequacy
+  - task_fit.representativeness
+
+# All numbers are draft defaults.                                    REVIEW
+# pass: at or beyond this is a pass. warn: at or beyond this is a caution;
+# short of it is a fail. Cohort, outcome and treatment fails are blocking.
+params:
+  cohort_identifiable:
+    decided_fraction: {pass: 0.90, warn: 0.75}
+  conditional_completeness:
+    required: {pass: 0.90, warn: 0.70}
+    recommended: {pass: 0.70, warn: 0.40}
+  outcome_adequacy:
+    usable_fraction: {pass: 0.90, warn: 0.70}
+    median_followup_years: {pass: 8, warn: 5}      # ER+ disease recurs late
+    events: {pass: 100, warn: 50}
+    events_per_arm: {pass: 30, warn: 15}
+    proxy_min_followup_years: {overall_survival: 5}   # overall survival alone, with less follow-up than this, fails
+  sample_size:
+    eligible_n: {pass: 1000, warn: 300}
+    events_per_predictor: {pass: 20, warn: 10}     # a screen only; Riley et al., BMJ 2020;368:m441
+  treatment_adequacy:
+    treatment_known: {pass: 0.90, warn: 0.75}      # share with yes or no recorded
+    smaller_arm_n: {pass: 100, warn: 50}
+    smaller_arm_share: {pass: 0.20, warn: 0.10}
+    confounders_present: {pass: 1.00, warn: 0.75}  # share of the confounders above that are recorded
+    confounder_min_coverage: 0.80                  # a confounder counts as recorded at this coverage
+    overlap: {enabled: true, pass: 0.80, warn: 0.60, min_arm_n: 50, cv_folds: 5}   # stretch metric; a caution at worst
+  representativeness:
+    compare_on: [age_at_index, race, stage_group, nodes_positive]
+    smd: {pass: 0.10, warn: 0.25}                  # 0.10: Austin, Stat Med 2009; 0.25: Rubin 2001
+    small_group_n: 50
+    category_maps:                                 # fold source categories into the ones SEER releases
+      race:
+        asian: asian or pacific islander
+        native hawaiian or other pacific islander: asian or pacific islander
+  missingness:
+    feature_warn: 0.20
+    overall_warn: 0.10
+    alpha: 0.05
+    min_site_size: 10
+
+# Narrower questions the dataset may still support when a check does not pass.
+fallbacks:
+  - question: Prognosis (risk of recurrence or death) in ER+/HER2- early breast cancer, without comparing treatments
+    if_not_passed: [task_fit.treatment_adequacy]
+  - question: Outcomes among patients recorded as having received chemotherapy
+    if_not_passed: [task_fit.treatment_adequacy]
+  - question: The same question on progression-free or overall survival instead of distant recurrence
+    if_not_passed: [task_fit.outcome_adequacy]

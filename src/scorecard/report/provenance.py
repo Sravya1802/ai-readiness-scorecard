@@ -56,6 +56,12 @@ def build_provenance(run: Run) -> dict:
         },
         "pack": {"id": run.pack.id, "version": run.pack.version},
         "data": run.profile.provenance.model_dump(mode="json"),
+        "privacy": run.profile.privacy.model_dump(mode="json"),
+        "reference": (
+            {k: run.profile.reference.get(k) for k in ("dataset_id", "task", "content_sha256")}
+            if run.profile.reference
+            else None
+        ),
         "checks": [
             {
                 "id": r.check_id,

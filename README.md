@@ -9,6 +9,16 @@ Lead: Nikita Thakur ([@nikitasthakur](https://github.com/nikitasthakur)) · Team
 
 > **Status: walking skeleton (v0.1).** The whole pipeline runs end to end on live TCGA-BRCA data. Six of the ten checks are implemented and four are registered stubs, so every verdict is marked **PROVISIONAL**. See [Team tasks](#team-tasks) for who owns what.
 
+## The five clinical questions
+
+The scorecard assesses TCGA-BRCA and SEER against five breast cancer questions from Dr. Gadi, each as its own task with a population, a variable list and its own checks. Start with [docs/FIVE_QUESTIONS.md](docs/FIVE_QUESTIONS.md). Before touching any data, read [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md). Known gaps are in [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+
+```bash
+scorecard tasks                       # the five questions plus survival-prediction
+scorecard profile --snapshot tests/fixtures/gdc_tcga_brca_40.json --task chemo-benefit --out out/demo-q1
+scorecard grid --runs out --out out/grid.html
+```
+
 ## Quick start
 
 You need Python 3.10 or newer. [uv](https://docs.astral.sh/uv/) is recommended; plain `pip` also works.

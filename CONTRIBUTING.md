@@ -23,7 +23,8 @@ pytest && ruff check . && ruff format --check .
 - **Every non-PASS result carries evidence**: the columns, counts and example patient ids a reviewer needs to confirm the finding by hand.
 - **No leakage in our own code.** Any model a check fits (site predictability, single-feature AUC) is fitted inside cross-validation folds, with preprocessing inside the fold pipeline.
 - **Tests run offline.** Use the fixture in `tests/fixtures/`. Mark anything that calls a live API with `@pytest.mark.network`.
-- **Only open-access data** goes in the repo.
+- **Only open-access data** goes in the repo, and only as the small test fixture. Downloads and exports live in `data/`, which git ignores. Never commit a SEER row. See `docs/DATA_HANDLING.md`.
+- **Reports on restricted sources show counts only.** Use `profile.privacy.count(n)` for any count in a summary, and leave `patient_ids` empty when `profile.privacy.patient_level_output` is false.
 
 ## Adding a check
 

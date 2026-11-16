@@ -1,6 +1,6 @@
 """Checks. Importing this package registers every check, in the order the data card shows them."""
 
-from scorecard.checks import completeness, integrity  # noqa: F401  (registration side effect)
+from scorecard.checks import completeness, integrity, task_fit  # noqa: F401  (registration)
 from scorecard.checks.base import (
     Check,
     CheckResult,
@@ -10,6 +10,8 @@ from scorecard.checks.base import (
     Severity,
     Status,
     StubCheck,
+    grade,
+    worst,
 )
 from scorecard.checks.registry import get_check, list_checks, register_check
 
@@ -23,6 +25,8 @@ __all__ = [
     "Status",
     "StubCheck",
     "get_check",
+    "grade",
     "list_checks",
     "register_check",
+    "worst",
 ]

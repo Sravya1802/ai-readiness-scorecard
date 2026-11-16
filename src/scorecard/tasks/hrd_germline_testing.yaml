@@ -1,0 +1,93 @@
+# Question 5 of 5 (Dr. Gadi): should the patient have germline testing
+# (evidence of homologous recombination repair deficiency)?
+#
+# STATUS: DRAFT. Scored here as HRD from tumor data, because inherited
+# (germline) calls are controlled access and not in the open tier. Dr. Gadi
+# still has to confirm that framing (open item). Every cutoff is a starting
+# value. Lines tagged REVIEW need a clinician.
+
+id: hrd-germline-testing
+number: 5
+title: Germline testing, from evidence of homologous recombination deficiency
+question: Should the patient have germline testing (evidence of HRD)?
+description: >
+  Identify patients whose tumor shows homologous recombination deficiency, as
+  a flag for germline testing. The label is a tumor HRD score at or above a
+  cutoff; confirmed germline status is listed as required so its absence shows.
+pack: oncology-completeness
+
+clinical_review:
+  status: draft
+  reviewer: null
+  review_date: null
+  open_questions:
+    - Can this question be scored as HRD from tumor data when germline calls are not available?
+    - Is an HRD score of 42 or more the right cutoff for a positive label? It is validated in triple-negative disease (Telli 2016) but Lenz 2023 found it does not fit ER-positive disease. Limit the population to TNBC, or use a subtype-specific cutoff?
+    - Should the population be limited, for example to triple-negative disease or by age?
+    - Which family history detail is the minimum needed?
+
+population:
+  description: Staged invasive breast cancer
+  include:
+    - {column: stage_group, op: in, values: [I, II, III, IV]}       # REVIEW
+
+target:
+  kind: label
+  title: HRD score at or above the cutoff
+  # 42: Telli et al., Clin Cancer Res 2016;22:3764-73 defined HR deficiency as
+  # an HRD score of 42 or more, or a BRCA1/2 mutation, in triple-negative breast
+  # cancer. Lenz et al., Breast Cancer Res Treat 2023 found the 42 threshold fits
+  # TNBC but not ER-positive breast cancer.                         REVIEW
+  positive: {column: hrd_score, op: gte, values: [42]}
+
+variables:
+  - {name: stage_group, column: ajcc_pathologic_stage, uninformative: [Stage X], role: cohort}
+  - {name: hrd_score, column: hrd_score, role: outcome}
+  - {name: germline_brca_status, column: germline_brca_status, role: outcome, note: The answer a clinician acts on. Controlled access in TCGA; absent from SEER.}
+  - {name: somatic_mutations, modality: somatic_mutation, role: predictor}
+  - {name: copy_number, modality: copy_number, role: predictor}
+  - {name: age_at_diagnosis, column: age_at_index, role: predictor}
+  - {name: family_history, column: family_history_breast_cancer, role: predictor}
+  - {name: er_status, column: er_status, role: predictor}
+  - {name: pr_status, column: pr_status, role: predictor}
+  - {name: her2_status, column: her2_status, role: predictor}
+  - {name: race, column: race, role: confounder}
+  - {name: ethnicity, column: ethnicity, need: recommended, role: confounder}
+  - {name: pam50_subtype, column: pam50_subtype, need: recommended, role: predictor}
+  - {name: grade, column: tumor_grade, uninformative: [GX, Not Applicable], need: recommended, role: predictor}
+  - {name: prior_cancer, any_of: [prior_malignancy, first_primary], need: recommended, role: predictor}
+  - {name: laterality, column: laterality, need: recommended, role: predictor}
+
+checks:
+  - integrity.missingness
+  - task_fit.cohort_identifiable
+  - completeness.conditional
+  - task_fit.outcome_adequacy
+  - task_fit.sample_size
+  - task_fit.representativeness
+
+# All numbers are draft defaults.                                    REVIEW
+params:
+  cohort_identifiable:
+    decided_fraction: {pass: 0.90, warn: 0.75}
+  conditional_completeness:
+    required: {pass: 0.90, warn: 0.70}
+    recommended: {pass: 0.70, warn: 0.40}
+  outcome_adequacy:
+    usable_fraction: {pass: 0.80, warn: 0.50}      # share of eligible patients with a label
+    minority_count: {pass: 100, warn: 30}          # patients in the smaller class
+  sample_size:
+    eligible_n: {pass: 500, warn: 200}
+    events_per_predictor: {pass: 20, warn: 10}
+  representativeness:
+    compare_on: [age_at_index, race, stage_group]
+    smd: {pass: 0.10, warn: 0.25}
+    small_group_n: 50
+    category_maps:
+      race:
+        asian: asian or pacific islander
+        native hawaiian or other pacific islander: asian or pacific islander
+
+fallbacks:
+  - question: Predict a tumor HRD score from clinical and pathology variables, with no claim about germline status
+    if_not_passed: [completeness.conditional]

@@ -1,0 +1,225 @@
+# SEER female breast cancer field map: SEER*Stat case listing columns -> shared variables.
+#
+# STATUS: UNCONFIRMED. Written from the SEER*Stat variable names as documented,
+# not from an export. Column names change a little between data submissions
+# (mostly the year range in brackets), so names are matched ignoring case,
+# punctuation and anything in brackets. After the first export, check the
+# adapter's "not found in this export" notes and fix `candidates` here.
+#
+# Export the listing with the variable names as the header row. Delimiter can
+# be comma or tab. Keep the file under data/, which git ignores.
+
+confirmed: false
+
+# Values SEER uses where it has no information (compared case-insensitively).
+sentinels:
+  - "Blank(s)"
+  - "Unknown"
+  - "Unknown/unstaged"
+  - "UNK Stage"
+  - "Not applicable"
+  - "N/A"
+  - "Recode not available"
+  - "Not 1990+ Breast"
+  - "Not 2010+ Breast"
+  - "Paired site, but no information concerning laterality"
+  - "Unknown or not applicable"
+
+# Used only to keep one record per person when an export has several primaries.
+# The value itself is never stored or written anywhere.
+patient_id: ["Patient ID"]
+order_by: ["Year of diagnosis"]
+
+columns:
+  age_at_index:
+    candidates: ["Age recode with single ages and 90+", "Age recode with single ages and 100+", "Age at diagnosis"]
+    type: leading_number            # "67 years", "90+ years"
+  sex:
+    candidates: ["Sex"]
+    map: {female: female, male: male}
+  race:
+    candidates: ["Race recode (W, B, AI, API)", "Race recode (White, Black, Other)"]
+    map:
+      white: white
+      black: black or african american
+      "american indian/alaska native": american indian or alaska native
+      "asian or pacific islander": asian or pacific islander
+  ethnicity:
+    candidates: ["Origin recode NHIA (Hispanic, Non-Hisp)"]
+    map:
+      "spanish-hispanic-latino": hispanic or latino
+      "non-spanish-hispanic-latino": not hispanic or latino
+  year_of_diagnosis:
+    candidates: ["Year of diagnosis"]
+    type: number
+  primary_site:
+    candidates: ["Primary Site - labeled", "Site recode ICD-O-3/WHO 2008"]
+    prefix: "Breast: "
+  laterality:
+    candidates: ["Laterality"]
+  primary_diagnosis:
+    candidates: ["Histologic Type ICD-O-3", "Histology recode - broad groupings"]
+  morphology:
+    candidates: ["ICD-O-3 Hist/behav"]
+  tumor_grade:
+    candidates: ["Grade Pathological (2018+)", "Grade Clinical (2018+)", "Grade Recode (thru 2017)"]
+    coalesce: true
+  tumor_size_mm:
+    candidates: ["Tumor Size Summary (2016+)", "CS tumor size (2004-2015)"]
+    coalesce: true
+    type: number
+    valid: [0, 989]                 # 990 and above are special codes, not millimetres
+  nodes_positive:
+    candidates: ["Regional nodes positive (1988+)"]
+    type: number
+    valid: [0, 90]                  # 95 to 99 are special codes
+  nodes_examined:
+    candidates: ["Regional nodes examined (1988+)"]
+    type: number
+    valid: [0, 90]
+  ajcc_pathologic_stage:
+    candidates:
+      - "Derived EOD 2018 Stage Group Recode (2018+)"
+      - "Derived SEER Cmb Stg Grp (2016-2017)"
+      - "Derived AJCC Stage Group, 7th ed (2010-2015)"
+      - "Breast - Adjusted AJCC 6th Stage (1988-2015)"
+    coalesce: true
+  ajcc_pathologic_t:
+    candidates:
+      - "Derived EOD 2018 T Recode (2018+)"
+      - "Derived SEER Combined T (2016-2017)"
+      - "Derived AJCC T, 7th ed (2010-2015)"
+    coalesce: true
+  ajcc_pathologic_n:
+    candidates:
+      - "Derived EOD 2018 N Recode (2018+)"
+      - "Derived SEER Combined N (2016-2017)"
+      - "Derived AJCC N, 7th ed (2010-2015)"
+    coalesce: true
+  ajcc_pathologic_m:
+    candidates:
+      - "Derived EOD 2018 M Recode (2018+)"
+      - "Derived SEER Combined M (2016-2017)"
+      - "Derived AJCC M, 7th ed (2010-2015)"
+    coalesce: true
+  metastatic_at_diagnosis:
+    candidates: ["Combined Summary Stage (2004+)", "Summary stage 2000 (1998-2017)"]
+    coalesce: true
+    contains:
+      - ["distant", "yes"]
+      - ["localized", "no"]
+      - ["regional", "no"]
+      - ["in situ", "no"]
+    else: null
+  first_primary:
+    candidates: ["First malignant primary indicator"]
+    map: {"yes": "yes", "no": "no"}
+  er_status:
+    candidates: ["ER Status Recode Breast Cancer (1990+)"]
+    map: {positive: Positive, negative: Negative, borderline: Equivocal, "borderline/unknown": null}
+  pr_status:
+    candidates: ["PR Status Recode Breast Cancer (1990+)"]
+    map: {positive: Positive, negative: Negative, borderline: Equivocal, "borderline/unknown": null}
+  her2_status:
+    candidates: ["Derived HER2 Recode (2010+)"]
+    map: {positive: Positive, negative: Negative, borderline: Equivocal, "borderline/unknown": null}
+  breast_subtype:
+    candidates: ["Breast Subtype (2010+)"]
+  surgery:
+    candidates: ["RX Summ--Surg Prim Site (1998+)", "RX Summ--Surg Prim Site 2023"]
+    coalesce: true
+    type: surgery_code              # 0 = none, 10 to 80 = surgery, 90 and 99 = unknown
+  chemotherapy:
+    candidates: ["Chemotherapy recode (yes, no/unk)"]
+    map: {"yes": "yes", "no/unknown": null}
+    caveats: [no_unknown_merged]
+    note: >-
+      SEER releases chemotherapy as "yes" or "no/unknown". Its treatment data
+      limitations page says: "we cannot accurately distinguish between 'no
+      treatment' and 'unknown if patients received treatment'". A "no" cannot
+      be read from this field.
+      (seer.cancer.gov/data-software/documentation/seerstat/nov2023/treatment-limitations-nov2023.html)
+  radiation_therapy:
+    candidates: ["Radiation recode"]
+    contains:
+      - ["none/unknown", null]
+      - ["unknown if administered", null]
+      - ["refused", "no"]
+      - ["radi", "yes"]
+      - ["beam", "yes"]
+      - ["implant", "yes"]
+    else: null
+    caveats: [no_unknown_merged]
+    note: >-
+      SEER releases radiation as a type or "none/unknown"; untreated and
+      unrecorded patients cannot be separated.
+      (seer.cancer.gov/data-software/documentation/seerstat/nov2023/treatment-limitations-nov2023.html)
+  neoadjuvant_therapy:
+    candidates: ["RX Summ--Systemic/Sur Seq (2007+)", "RX Summ--Systemic/Sur Seq"]
+    contains:
+      - ["before", "yes"]
+      - ["after surgery", "no"]
+    else: null
+    caveats: [sequence_not_intent]
+    note: >-
+      Derived from the order of systemic therapy and surgery. SEER notes that
+      systemic therapy given before surgery may not have had neoadjuvant intent.
+  radiation_sequence:
+    candidates: ["RX Summ--Surg/Rad Seq"]
+  time_to_treatment_days:
+    candidates: ["Time from diagnosis to treatment in days recode"]
+    type: leading_number
+  os_time_months:                   # converted to os_time_days by the adapter
+    candidates: ["Survival months"]
+    type: number
+  vital_status:
+    candidates: ["Vital status recode (study cutoff used)"]
+    map: {alive: Alive, dead: Dead}
+  dss_event:
+    candidates: ["SEER cause-specific death classification"]
+    contains:
+      - ["dead (attributable", 1]
+      - ["alive or dead of other cause", 0]
+    else: null
+  genomic_risk_score:               # specialized Oncotype DX database, separate request
+    candidates: ["OncotypeDX Breast RS (2004-2019)", "Oncotype DX Breast Recurrence Score"]
+    type: number
+    valid: [0, 100]
+  genomic_risk_reason_no_score:
+    candidates: ["OncotypeDX Breast RS reason no score linked (2004-2019)"]
+
+# Variables SEER does not carry. Declared and left empty.
+not_in_source:
+  endocrine_therapy: SEER research data do not release endocrine therapy.
+  endocrine_therapy_start_days: SEER research data do not release endocrine therapy.
+  endocrine_therapy_end_days: SEER research data do not release endocrine therapy.
+  endocrine_therapy_duration_days: SEER research data do not release endocrine therapy.
+  targeted_therapy: Not released by SEER.
+  immunotherapy: Not released by SEER.
+  ovarian_suppression: Not released by SEER.
+  drug_names: SEER does not record drug names.
+  menopausal_status: Not collected by SEER.
+  family_history_breast_cancer: Not collected by SEER.
+  margin_status: Not in the research data.
+  her2_ihc_status: SEER releases one derived HER2 result, not the separate tests.
+  her2_ihc_score: SEER releases one derived HER2 result, not the separate tests.
+  her2_fish_status: SEER releases one derived HER2 result, not the separate tests.
+  surgery_type: Only surgery of primary site codes; mapped to surgery yes or no.
+  pam50_subtype: No molecular subtype in SEER.
+  hrd_score: No tumor genomics in SEER.
+  germline_brca_status: No germline data in SEER.
+  pfi_event: SEER research data have no recurrence or progression.
+  pfi_time_days: SEER research data have no recurrence or progression.
+  dfi_event: SEER research data have no recurrence or progression.
+  dfi_time_days: SEER research data have no recurrence or progression.
+  distant_recurrence_event: SEER research data have no recurrence or progression.
+  distant_recurrence_time_days: SEER research data have no recurrence or progression.
+  progression_or_recurrence: SEER research data have no recurrence or progression.
+  prior_malignancy: Use first_primary.
+  tissue_source_site: Registries are not released as a site label here.
+  gdc_case_id: Not a GDC dataset.
+  age_at_diagnosis_days: SEER releases age in years (age_at_index).
+  site_of_resection_or_biopsy: Not in the research data.
+  icd_10_code: Not in the case listing.
+  ajcc_staging_system_edition: Stage comes from several derived fields; the edition varies by year.
+  treatment_types: Use the separate treatment columns.

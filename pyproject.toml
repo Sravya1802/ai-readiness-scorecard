@@ -23,6 +23,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff==0.16.10"]
+excel = ["openpyxl>=3.1"]  # to read the TCGA-CDR workbook
 
 [project.scripts]
 scorecard = "scorecard.cli:main"

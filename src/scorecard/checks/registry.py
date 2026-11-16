@@ -24,4 +24,5 @@ def get_check(check_id: str) -> Check:
 def list_checks(family: Family | None = None) -> list[type[Check]]:
     """Registered checks in display order, optionally limited to one family."""
     checks = [c for c in _REGISTRY.values() if family is None or c.family is family]
-    return sorted(checks, key=lambda c: (c.family.value != "integrity", c.order))
+    families = list(Family)
+    return sorted(checks, key=lambda c: (families.index(c.family), c.order))

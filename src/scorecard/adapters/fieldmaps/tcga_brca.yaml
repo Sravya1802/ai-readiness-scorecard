@@ -1,0 +1,156 @@
+# TCGA-BRCA field map: where each shared variable comes from.
+#
+# STATUS: UNCONFIRMED. Written from the published variable metadata (GDC data
+# dictionary, BCR Biotab column headers, TCGA-CDR Table S1), not from the
+# downloaded files. Step 2 of the plan: open each downloaded file, check the
+# column names against `candidates` below, fix any that differ, then set
+# `confirmed: true`. No Python changes are needed to rename a source column.
+#
+# For each variable the adapter takes the first candidate column it finds in
+# the table. A variable whose table or column is not found is declared in the
+# profile, left empty, and marked "not loaded".
+
+confirmed: false
+
+# Strings the Biotab files use where a value is absent (compared case-insensitively).
+sentinels:
+  - "[Not Available]"
+  - "[Not Applicable]"
+  - "[Unknown]"
+  - "[Not Evaluated]"
+  - "[Discrepancy]"
+  - "[Completed]"
+  - "NA"
+  - "N/A"
+  - "--"
+
+# GDC API treatment records: a lower-case keyword found in treatment_type
+# assigns the record to a treatment class. Values are from the GDC dictionary.
+gdc_treatment_types:
+  chemotherapy: [chemotherapy]
+  endocrine_therapy: [hormone therapy]
+  radiation_therapy: [radiation, brachytherapy]
+  targeted_therapy: [targeted molecular therapy]
+  immunotherapy: [immunotherapy]
+  surgery: [surgery]
+gdc_neoadjuvant_intents: [neoadjuvant]
+
+# Local files, matched by name inside the --supplement folder (searched recursively).
+tables:
+  patient:
+    files: ["*clinical_patient_brca*"]
+    key: [bcr_patient_barcode]
+  drug:
+    files: ["*clinical_drug_brca*"]
+    key: [bcr_patient_barcode]
+  radiation:
+    files: ["*clinical_radiation_brca*"]
+    key: [bcr_patient_barcode]
+  cdr:                      # TCGA Clinical Data Resource, Liu et al., Cell 2018, Table S1
+    files: ["*TCGA-CDR*", "*clinical_data_resource*"]
+    sheet: TCGA-CDR
+    key: [bcr_patient_barcode]
+    where: {type: BRCA}
+  subtype:                  # published PAM50 calls; record the exact source file when downloading
+    files: ["*subtype*", "*PAM50*", "*pam50*"]
+    key: [bcr_patient_barcode, patient, pan.samplesID, sample, Sample.ID, sampleID]
+  hrd:                      # published HRD scores; record the exact source file when downloading
+    files: ["*HRD*", "*hrd*"]
+    key: [bcr_patient_barcode, patient, sample, Sample.ID, sampleID, SampleBarcode]
+
+# One value per patient, read straight from a table.
+columns:
+  nodes_positive:
+    table: patient
+    candidates: [lymph_nodes_examined_he_count, number_of_lymphnodes_positive_by_he]
+    type: number
+  nodes_examined:
+    table: patient
+    candidates: [lymph_nodes_examined_count, lymph_node_examined_count]
+    type: number
+  tumor_size_mm:
+    table: patient
+    candidates: []          # no size in mm is known in the BRCA patient file; T category is in ajcc_pathologic_t
+    type: number
+  margin_status:
+    table: patient
+    candidates: [margin_status]
+  menopausal_status:
+    table: patient
+    candidates: [menopause_status]
+    contains:
+      - ["pre (", premenopausal]
+      - ["peri (", perimenopausal]
+      - ["post (", postmenopausal]
+      - ["indeterminate", null]
+  family_history_breast_cancer:
+    table: patient
+    candidates: []          # not known to be recorded for TCGA-BRCA
+  her2_ihc_status:
+    table: patient
+    candidates: [her2_status_by_ihc, lab_proc_her2_neu_immunohistochemistry_receptor_status]
+    map: {positive: Positive, negative: Negative, equivocal: Equivocal, indeterminate: null}
+  her2_ihc_score:
+    table: patient
+    candidates: [her2_ihc_score, her2_immunohistochemistry_level_result]
+  her2_fish_status:
+    table: patient
+    candidates: [her2_fish_status, lab_procedure_her2_neu_in_situ_hybrid_outcome_type]
+    map: {positive: Positive, negative: Negative, equivocal: Equivocal, indeterminate: null}
+  surgery_type:
+    table: patient
+    candidates: [surgical_procedure_first, breast_carcinoma_surgical_procedure_name]
+  neoadjuvant_therapy:
+    table: patient
+    candidates: [history_neoadjuvant_treatment, history_of_neoadjuvant_treatment]
+    contains:
+      - ["yes", "yes"]
+      - ["no", "no"]
+  pfi_event: {table: cdr, candidates: [PFI], type: number}
+  pfi_time_days: {table: cdr, candidates: [PFI.time], type: number}
+  dfi_event: {table: cdr, candidates: [DFI], type: number}
+  dfi_time_days: {table: cdr, candidates: [DFI.time], type: number}
+  dss_event: {table: cdr, candidates: [DSS], type: number}
+  dss_time_days: {table: cdr, candidates: [DSS.time], type: number}
+  pam50_subtype:
+    table: subtype
+    candidates: [BRCA_Subtype_PAM50, PAM50, PAM50.mRNA, Subtype_mRNA, SUBTYPE]
+  hrd_score:
+    table: hrd
+    candidates: [HRD, HRD_Score, HRD-sum, HRD_sum, hrd_sum, HRDsum]
+    type: number
+
+# Patient-level yes/no flags that back up the drug and radiation tables.
+# An explicit NO here is the only thing that makes a treatment "no".
+patient_flags:
+  systemic_therapy: [pharmaceutical_tx_adjuvant, targeted_molecular_therapy]
+  radiation_therapy: [radiation_treatment_adjuvant, radiation_therapy]
+
+# Drug table: one row per drug given.
+drug:
+  type: [pharmaceutical_therapy_type, therapy_type]
+  name: [pharmaceutical_therapy_drug_name, drug_name]
+  start_days: [pharmaceutical_tx_started_days_to, days_to_drug_therapy_start]
+  end_days: [pharmaceutical_tx_ended_days_to, days_to_drug_therapy_end]
+  classes:                  # lower-case keyword in the therapy type -> treatment class
+    chemotherapy: [chemotherapy]
+    endocrine_therapy: [hormone]
+    targeted_therapy: [targeted]
+    immunotherapy: [immuno]
+  ovarian_suppression_drugs: [goserelin, zoladex, leuprolide, leuprorelin, lupron, triptorelin, trelstar]
+  # A patient with drug records but none of a class (for example hormone therapy
+  # only) is NOT assumed to be "no" for that class unless this is true.
+  # Left false until the team confirms the pattern on the full data (plan step 3.3).
+  infer_no_from_other_drug_records: false
+
+# Variables open-tier TCGA does not carry. Declared and left empty.
+not_in_source:
+  genomic_risk_score: No commercial recurrence score in TCGA. RNA-seq can stand in for a research-derived score.
+  genomic_risk_reason_no_score: No commercial recurrence score in TCGA.
+  germline_brca_status: Germline calls are controlled access and not in the open tier.
+  distant_recurrence_event: TCGA-CDR has no distant recurrence endpoint; progression-free interval is the closest.
+  distant_recurrence_time_days: TCGA-CDR has no distant recurrence endpoint; progression-free interval is the closest.
+  breast_subtype: Registry receptor subtype recode; use er_status, pr_status and her2_status instead.
+  first_primary: Registry field; use prior_malignancy instead.
+  time_to_treatment_days: Not recorded as a single field.
+  radiation_sequence: Registry field.

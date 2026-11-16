@@ -9,6 +9,12 @@ from typing import TYPE_CHECKING
 from scorecard.report import croissant, rocrate
 from scorecard.report.data_card import render_data_card
 from scorecard.report.provenance import build_provenance
+from scorecard.report.summary import (
+    cohort_summary,
+    main_reason,
+    narrower_questions,
+    what_is_missing,
+)
 
 if TYPE_CHECKING:
     from scorecard.pipeline import Run
@@ -29,6 +35,10 @@ def scorecard_json(run: Run) -> dict:
         "task": run.task.model_dump(mode="json"),
         "pack": {"id": run.pack.id, "version": run.pack.version},
         "verdict": run.verdict.model_dump(mode="json"),
+        "headline": main_reason(run),
+        "cohort": cohort_summary(run),
+        "what_is_missing": what_is_missing(run),
+        "narrower_questions": narrower_questions(run),
         "bridge2ai_profile": [a.model_dump(mode="json") for a in run.axes],
         "results": [r.model_dump(mode="json") for r in run.results],
     }

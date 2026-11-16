@@ -9,13 +9,16 @@ changes go through the project lead (see docs/TECHNICAL_PLAN.md).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from enum import Enum
 
 import pandas as pd
 from pydantic import BaseModel, Field
 
-IR_VERSION = "0.1.0"
+IR_VERSION = "0.2.0"
+# All times in the IR are days; reports convert with this.
+DAYS_PER_YEAR = 365.25
 
 
 class ProfileError(ValueError):
@@ -31,6 +34,25 @@ class Role(str, Enum):
     SITE = "site"
 
 
+class Availability(str, Enum):
+    """Whether the source carries a variable at all, as opposed to missing values in it.
+
+    Every adapter declares the full shared vocabulary. A variable the source
+    does not have is still a column, left empty and marked here, so a check can
+    tell "absent from the dataset" from "missing for some patients".
+    """
+
+    LOADED = "loaded"
+    # The source has it, but the file that holds it was not given to the adapter.
+    NOT_LOADED = "not_loaded"
+    NOT_IN_SOURCE = "not_in_source"
+
+
+# FeatureMeta.caveats code: the source reports "no" and "unknown" as one value,
+# so the adapter cannot emit a trustworthy "no".
+NO_UNKNOWN_MERGED = "no_unknown_merged"
+
+
 class FeatureMeta(BaseModel):
     """What one column of `DatasetProfile.features` is and where it came from."""
 
@@ -39,6 +61,39 @@ class FeatureMeta(BaseModel):
     role: Role = Role.FEATURE
     source_field: str | None = None
     description: str | None = None
+    availability: Availability = Availability.LOADED
+    caveats: list[str] = Field(default_factory=list)
+    # Plain-language reason for the availability or caveat, quoted on the data card.
+    note: str | None = None
+
+
+def _default_min_cell() -> int | None:
+    value = os.environ.get("SCORECARD_MIN_CELL")
+    return int(value) if value else None
+
+
+class PrivacyPolicy(BaseModel):
+    """What a report built on this profile may show.
+
+    patient_level_output  False for sources whose data use agreement covers
+                          case-level rows (SEER): reports then carry counts and
+                          percentages only, never patient ids or example rows.
+    min_cell_count        counts from 1 up to this number minus one are shown
+                          as "<N". None turns suppression off.
+    """
+
+    patient_level_output: bool = True
+    min_cell_count: int | None = Field(default_factory=_default_min_cell)
+    basis: str | None = None
+
+    def count(self, n: int) -> int | str:
+        """A count as it may be shown: the number, or "<N" when it is a small cell."""
+        if self.min_cell_count and 0 < n < self.min_cell_count:
+            return f"<{self.min_cell_count}"
+        return int(n)
+
+    def is_small(self, n: int) -> bool:
+        return bool(self.min_cell_count) and 0 < n < self.min_cell_count
 
 
 class Provenance(BaseModel):
@@ -79,6 +134,8 @@ class ProfileSummary(BaseModel):
     n_patients_all_modalities: int
     features: list[FeatureMeta]
     provenance: Provenance
+    linkable: bool = True
+    privacy: PrivacyPolicy = Field(default_factory=PrivacyPolicy)
 
 
 @dataclass
@@ -92,6 +149,10 @@ class DatasetProfile:
                   repository. Presence does not mean the modality's features
                   are loaded into `features`.
     site_column   the column of `features` holding the site/batch label
+    linkable      False for sources that are never joined per patient (SEER)
+    privacy       what reports built on this profile may show
+    reference     aggregate summary of a reference population (counts and
+                  shares only), set by the pipeline for the representativeness check
     """
 
     dataset_id: str
@@ -102,6 +163,9 @@ class DatasetProfile:
     modalities: pd.DataFrame
     provenance: Provenance
     site_column: str | None = None
+    linkable: bool = True
+    privacy: PrivacyPolicy = field(default_factory=PrivacyPolicy)
+    reference: dict | None = None
 
     def __post_init__(self) -> None:
         self.validate()
@@ -136,8 +200,24 @@ class DatasetProfile:
     def site(self) -> pd.Series | None:
         return None if self.site_column is None else self.features[self.site_column]
 
-    def columns_with_role(self, role: Role) -> list[str]:
-        return [c for c in self.features.columns if self.feature_meta[c].role is role]
+    def columns_with_role(self, role: Role, *, loaded_only: bool = False) -> list[str]:
+        return [
+            c
+            for c in self.features.columns
+            if self.feature_meta[c].role is role and (not loaded_only or self.carries(c))
+        ]
+
+    def availability(self, column: str) -> Availability:
+        """How the source stands on a column. Undeclared columns are not in the source."""
+        meta = self.feature_meta.get(column)
+        return Availability.NOT_IN_SOURCE if meta is None else meta.availability
+
+    def carries(self, column: str) -> bool:
+        return self.availability(column) is Availability.LOADED
+
+    def has_caveat(self, column: str, caveat: str) -> bool:
+        meta = self.feature_meta.get(column)
+        return meta is not None and caveat in meta.caveats
 
     def modality_coverage(self) -> list[ModalityCoverage]:
         n = max(self.n_patients, 1)
@@ -164,4 +244,6 @@ class DatasetProfile:
             n_patients_all_modalities=int(self.modalities.all(axis=1).sum()),
             features=[self.feature_meta[c] for c in self.features.columns],
             provenance=self.provenance,
+            linkable=self.linkable,
+            privacy=self.privacy,
         )

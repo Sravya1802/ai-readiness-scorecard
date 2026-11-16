@@ -15,6 +15,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from scorecard.adapters import list_adapters
 from scorecard.checks import Family, Status, list_checks
 from scorecard.checks.base import Criterion
+from scorecard.report.summary import cohort_summary, narrower_questions, what_is_missing
 
 if TYPE_CHECKING:
     from scorecard.pipeline import Run
@@ -93,6 +94,15 @@ def _radar(run: Run) -> dict:
 def _linkage(run: Run) -> dict:
     profile = run.profile
     n = max(profile.n_patients, 1)
+    if not profile.linkable:
+        return {
+            "title": "not linkable",
+            "rows": [],
+            "all_present": profile.n_patients,
+            "n_loaded": len(profile.modalities.columns),
+            "n": n,
+            "note": "Registry data. Patients are never joined to other repositories.",
+        }
     rows = [
         {
             "label": MODALITY_LABELS.get(c.modality, c.modality.replace("_", " ").capitalize()),
@@ -159,6 +169,7 @@ def context(run: Run) -> dict:
     by_id = {r["id"]: r for r in rows}
     integrity = [by_id[r.check_id] for r in run.results if r.family is Family.INTEGRITY]
     completeness = [by_id[r.check_id] for r in run.results if r.family is Family.COMPLETENESS]
+    task_fit = [by_id[r.check_id] for r in run.results if r.family is Family.TASK_FIT]
     descriptions = {c.id: c.description for c in list_checks()}
     for row in rows:
         row["description"] = descriptions.get(row["id"], "")
@@ -171,6 +182,12 @@ def context(run: Run) -> dict:
         "verdict_class": run.verdict.label.value.lower().replace("_", "-"),
         "integrity": integrity,
         "completeness": completeness,
+        "task_fit": task_fit,
+        "cohort": cohort_summary(run),
+        "missing": what_is_missing(run),
+        "narrower": narrower_questions(run),
+        "review": run.task.clinical_review,
+        "privacy": profile.privacy,
         "radar": _radar(run),
         "linkage": _linkage(run),
         "n_files": n_files,

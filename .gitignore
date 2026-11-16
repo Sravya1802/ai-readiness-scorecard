@@ -14,3 +14,12 @@ out/
 
 # Personal Claude Code settings
 .claude/settings.local.json
+
+# Patient-level data never goes in this public repo. Keep every download and
+# export (GDC files, SEER*Stat case listings, published tables) under data/.
+data/
+*.seerstat
+*.dic
+*.slm
+gdc_manifest*.txt
+*.tar.gz

@@ -1,0 +1,75 @@
+# Question 3 of 5 (Dr. Gadi): how long should endocrine therapy last?
+#
+# STATUS: DRAFT, short form. This file only tests whether the must-have
+# variables exist (cohort and completeness checks). Every cutoff is a
+# starting value.                                                     REVIEW
+
+id: endocrine-duration
+number: 3
+title: Duration of endocrine therapy
+question: How long should endocrine therapy last?
+description: >
+  Quick pass: does the dataset record endocrine therapy with start and end
+  times, the drug, menopausal status, and late recurrence?
+pack: oncology-completeness
+
+clinical_review:
+  status: draft
+  reviewer: null
+  review_date: null
+  open_questions:
+    - Is ER-positive, stage I to III the right population?
+    - Is late distant recurrence (after year 5) the outcome to require?
+
+population:
+  description: ER-positive, stage I to III
+  include:
+    - {column: er_status, op: in, values: [Positive]}
+    - {column: stage_group, op: in, values: [I, II, III]}
+
+variables:
+  - {name: er_status, column: er_status, role: cohort}
+  - {name: stage_group, column: ajcc_pathologic_stage, uninformative: [Stage X], role: cohort}
+  - {name: endocrine_therapy, column: endocrine_therapy, role: treatment}
+  - name: endocrine_start
+    column: endocrine_therapy_start_days
+    role: treatment
+    expected_when: [{column: endocrine_therapy, op: in, values: ["yes"]}]
+  - name: endocrine_end
+    column: endocrine_therapy_end_days
+    role: treatment
+    expected_when: [{column: endocrine_therapy, op: in, values: ["yes"]}]
+  - name: endocrine_drug
+    column: drug_names
+    role: treatment
+    expected_when: [{column: endocrine_therapy, op: in, values: ["yes"]}]
+  - name: menopausal_status
+    column: menopausal_status
+    role: predictor
+    expected_when: [{column: sex, op: in, values: [female]}]
+  - {name: nodes_positive, column: nodes_positive, role: predictor}
+  - {name: tumor_size, any_of: [tumor_size_mm, ajcc_pathologic_t], uninformative: [TX], role: predictor}
+  - {name: grade, column: tumor_grade, uninformative: [GX, Not Applicable], role: predictor}
+  - {name: pr_status, column: pr_status, role: predictor}
+  - {name: her2_status, column: her2_status, role: predictor}
+  - {name: age_at_diagnosis, column: age_at_index, role: predictor}
+  - name: distant_recurrence
+    column: distant_recurrence_event
+    role: outcome
+    substitutes: [pfi_event, dfi_event]
+  - {name: followup_time, column: os_time_days, role: outcome}
+
+checks:
+  - integrity.missingness
+  - task_fit.cohort_identifiable
+  - completeness.conditional
+
+params:
+  cohort_identifiable:
+    decided_fraction: {pass: 0.90, warn: 0.75}
+  conditional_completeness:
+    required: {pass: 0.90, warn: 0.70}
+    recommended: {pass: 0.70, warn: 0.40}
+    # A required treatment or outcome variable the dataset does not carry at all
+    # (and has no stand-in for) blocks the verdict: the question cannot be asked.
+    blocking_if_absent_roles: [treatment, outcome]

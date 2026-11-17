@@ -11,7 +11,7 @@ Lead: Nikita Thakur ([@nikitasthakur](https://github.com/nikitasthakur)) · Team
 
 ## The five clinical questions
 
-The scorecard assesses TCGA-BRCA and SEER against five breast cancer questions from Dr. Gadi, each as its own task with a population, a variable list and its own checks. Start with [docs/FIVE_QUESTIONS.md](docs/FIVE_QUESTIONS.md). Before touching any data, read [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md). Known gaps are in [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+The scorecard assesses TCGA-BRCA and SEER against five breast cancer questions from Dr. Gadi, each as its own task with a population, a variable list and its own checks. Start with [docs/FIVE_QUESTIONS.md](docs/FIVE_QUESTIONS.md). Before touching any data, read [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md). To download TCGA-BRCA and SEER and run the tool on them, follow [docs/GETTING_THE_DATA.md](docs/GETTING_THE_DATA.md). Known gaps are in [docs/LIMITATIONS.md](docs/LIMITATIONS.md). Background papers for each question are in [docs/READING_LIST.md](docs/READING_LIST.md).
 
 ```bash
 scorecard tasks                       # the five questions plus survival-prediction

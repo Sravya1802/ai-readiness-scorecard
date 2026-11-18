@@ -1,17 +1,35 @@
 # AI-Readiness Scorecard
 
-**Does this oncology dataset support this AI task, and if not, what is missing?**
+**Is a breast cancer dataset ready for the clinical question?**
 
-A Python package that profiles a dataset from the NCI Cancer Research Data Commons (CRDC) against a declared AI task. It returns a READY / CONDITIONAL / NOT READY verdict, with blocking deficiencies kept separate from degrading ones and every finding linked to its evidence.
+Teams build AI models on cancer datasets without knowing whether the data can answer their clinical question, and the problems show up late, after the model is built. General data quality tools report missingness; none check whether the variables a specific clinical question needs are present, complete and comparable.
 
-NCI Data Jamboree 2026 project · University of Illinois Cancer Center
-Lead: Nikita Thakur ([@nikitasthakur](https://github.com/nikitasthakur)) · Team: Saransh Singh ([@singh2626ss](https://github.com/singh2626ss)), Juhi Anand ([@ajuhia](https://github.com/ajuhia)), Lakshmi Sravya Rachakonda ([@Sravya1802](https://github.com/Sravya1802))
+This is a Python tool that takes a dataset and a clinical question, checks the data against rules drawn from clinical trials and guidelines, and returns **READY**, **CONDITIONAL** or **NOT READY**, with the evidence and a list of what is missing.
 
-> **Status: as presented at the NCI Data Jamboree, November 18, 2026.** The pipeline assesses Dr. Gadi's five breast cancer questions and was demonstrated on mock data (see [Demo data](#demo-data)). The SEER adapter is built but has not yet been run on a real export, every clinical cutoff is a draft awaiting clinician review, and four general checks are still stubs. See [Team tasks](#team-tasks) for who owns what is left.
+NCI Data Jamboree 2026 · Category: AI readiness and data quality
 
-## The five clinical questions
+| Name | Institution | Role |
+|---|---|---|
+| Nikita Thakur ([@nikitasthakur](https://github.com/nikitasthakur)) | University of Illinois Cancer Center | Project lead |
+| Saransh Singh ([@singh2626ss](https://github.com/singh2626ss)) | University of Illinois Chicago | Team member |
+| Juhi Anand ([@ajuhia](https://github.com/ajuhia)) | University of Illinois Chicago | Team member |
+| Lakshmi Sravya Rachakonda ([@Sravya1802](https://github.com/Sravya1802)) | University of Illinois Chicago | Team member |
+| Dr. Chandrasekaran Ranganathan | University of Illinois Chicago | Faculty PI |
+| Dr. VK Gadi | University of Illinois Cancer Center | Clinical guidance (breast oncology) |
 
-The scorecard assesses TCGA-BRCA and SEER against five breast cancer questions from Dr. Gadi, each as its own task with a population, a variable list and its own checks. Start with [docs/FIVE_QUESTIONS.md](docs/FIVE_QUESTIONS.md). Before touching any data, read [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md). Known gaps are in [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+> **Status: as presented at the NCI Data Jamboree, November 18, 2026.** Pipelines are built for question 1 (chemotherapy benefit) and question 5 (germline testing from evidence of HRD), with rules from clinical trials, six readiness checks and a verdict with evidence. **No real dataset has been run yet**: TCGA-BRCA and SEER are planned but not downloaded, and the code has only been tested on small sample tables (see [Data](#data)). Every clinical cutoff is a draft awaiting Dr. Gadi's sign-off. See [Team tasks](#team-tasks) for who owns what is left.
+
+## The clinical questions
+
+The questions come from our breast oncologist, Dr. Gadi. Each is its own task with a population, a variable list and its own checks. Questions 1 and 5 are the full pipelines presented at the Jamboree; questions 2 to 4 are shorter drafts.
+
+| # | Question | The data must have | Task |
+|---|---|---|---|
+| 1 | Will the patient benefit from chemotherapy? | ER+/HER2-, stage I to III, 0 to 3 positive nodes (TAILORx, RxPONDER); chemo recorded as given or not, not only "unknown"; menopausal status and genomic risk; long follow-up, since ER+ disease recurs late | `chemo-benefit` |
+| 5 | Should the patient have germline testing (evidence of HRD)? | Tumor HRD score as the label (draft cutoff 42); somatic mutations and stage for each patient; germline status listed as required, so its absence shows; enough HRD-positive patients to learn from | `hrd-germline-testing` |
+| 2–4 | Neoadjuvant therapy, endocrine therapy duration, ovarian suppression | Drafts | `neoadjuvant-therapy`, `endocrine-duration`, `ovarian-suppression` |
+
+Start with [docs/FIVE_QUESTIONS.md](docs/FIVE_QUESTIONS.md). Before touching any data, read [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md). Known gaps are in [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
 
 ```bash
 scorecard tasks                       # the five questions plus survival-prediction
@@ -61,11 +79,18 @@ Other commands:
 | `grid.html` | From `scorecard grid`: every question against every dataset on one page |
 | `croissant.json`, `ro-crate/` | Not built yet (owner: Lakshmi Sravya Rachakonda) |
 
-## Demo data
+## Data
 
-The results shown at the Jamboree were produced on **mock data**: an invented TCGA-shaped dataset (1,100 patients) and an invented SEER-shaped dataset (6,000 patients). Every value is random, and no row comes from a real patient or a real file. The column names and value codes follow the published TCGA and SEER metadata, so the adapters and checks run end to end exactly as they would on real data. No model is trained at any point: the scorecard profiles data quality, it does not fit a predictive model.
+**Datasets used at the Jamboree: none yet.** Planned, not downloaded:
 
-To reproduce the demo:
+| Dataset | Access | How it is used |
+|---|---|---|
+| TCGA-BRCA, GDC open tier (phs000178) | Open | Clinical data with the published outcome and HRD tables |
+| SEER Research Plus, female breast cancer | Per-person SEER*Stat account, eRA Commons | Population reference only, never linked to TCGA patients |
+
+Why no data: SEER requires access for every team member, and some eRA Commons accounts were still pending. The code was tested only on small sample tables: invented rows written inside the tests, and a 40-record extract from the open GDC tier in `tests/fixtures/`. No model is trained at any point; the scorecard profiles data, it does not fit a predictive model.
+
+To try the tool without real data, generate an invented TCGA-shaped and SEER-shaped dataset (every value random, no real patient):
 
 ```bash
 python scripts/make_synthetic_demo.py     # writes data/synthetic/ (git-ignored)
@@ -74,7 +99,31 @@ scorecard profile --snapshot data/synthetic/gdc_synthetic_snapshot.json \
 scorecard grid --runs out/demo --out out/demo/grid.html
 ```
 
-Running on real data is the next step: TCGA-BRCA from the open GDC API (see Quick start) and SEER from a SEER*Stat export (see [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md)).
+## Jamboree report-out
+
+**Gaps found in public data**
+- Open TCGA has no germline calls, so question 5 can only use tumor HRD.
+- TCGA has no distant recurrence endpoint for question 1.
+- SEER records chemotherapy only as "yes" or "no/unknown".
+
+**Feedback on data access**
+- New data needs its own IRB, and finding a PI first took time.
+- An approved study cannot be reused when the purpose changes.
+- SEER access is per person, so partial access stops the whole team.
+
+**What we learned**
+1. Line up the PI and IRB first. They set the timeline for everything else.
+2. Reusing an approved study for a new purpose still needs a new review.
+3. Get data access for every team member early.
+4. Bring a clinician in from day one. Dr. Gadi's questions shaped the project.
+
+**Next steps**
+1. Download TCGA and SEER and run both questions once everyone has access.
+2. Get Dr. Gadi's sign-off on the rules.
+3. File a new IRB for our institutional breast cancer data.
+4. Share the results with the Jamboree community.
+
+Suggestion for future events: a pre-event checklist for IRB and data access would help first-time teams.
 
 ## Architecture
 
@@ -185,10 +234,10 @@ The Jamboree build is complete and the project is frozen as presented. The work 
 
 | Person | Area | Owns | Remaining tasks |
 |---|---|---|---|
-| **Nikita Thakur** ([@nikitasthakur](https://github.com/nikitasthakur)), lead | Five clinical questions, shared contracts, task-fit checks | `profile.py`, `pipeline.py`, `verdict.py`, `tasks/*.yaml`, `checks/task_fit/`, `adapters/gdc.py` | Get clinician sign-off from Dr. Gadi on every cutoff and record it under `clinical_review` in each task file. Merge the data guide (`docs/GETTING_THE_DATA.md`, still on the `five-questions` branch). Check the Q5 copy-number entry, which reports copy number as not carried although GDC has open copy-number files. Load the gene expression and mutation matrices into the profile. Finish the write-up in `docs/LIMITATIONS.md`. |
+| **Nikita Thakur** ([@nikitasthakur](https://github.com/nikitasthakur)), lead | Clinical questions, shared contracts, task-fit checks | `profile.py`, `pipeline.py`, `verdict.py`, `tasks/*.yaml`, `checks/task_fit/`, `adapters/gdc.py` | Get Dr. Gadi's sign-off on every cutoff and record it under `clinical_review` in each task file. With Dr. Ranganathan, file the new IRB for our institutional breast cancer data. Run questions 1 and 5 on TCGA and SEER once everyone has access, and share the results with the Jamboree community. Merge the data guide (`docs/GETTING_THE_DATA.md`, still on the `five-questions` branch). Check the Q5 copy-number entry, which reports copy number as not carried although GDC has open copy-number files. Load the gene expression and mutation matrices into the profile. Finish the write-up in `docs/LIMITATIONS.md`. |
 | **Saransh Singh** ([@singh2626ss](https://github.com/singh2626ss)) | Statistical engine | `checks/integrity/` | Build **site effects** (cross-validated site AUC against a permutation null), **confounding** (Cramér's V between site and target) and **data leakage** (identifier columns, patient straddle, near-duplicates, single-feature leaks); specs are in [`stubs.py`](src/scorecard/checks/integrity/stubs.py). Keep every fitted model, including the propensity model in treatment adequacy, inside CV folds. |
 | **Juhi Anand** ([@ajuhia](https://github.com/ajuhia)) | Oncology domain pack and TCGA data | `packs/oncology.yaml`, `checks/completeness/`, `adapters/fieldmaps/tcga_brca.yaml` | Download the TCGA-BRCA supplement files (Clinical Supplement, TCGA-CDR, published subtype and HRD tables) into `data/tcga_brca/`, check the headers, and set `confirmed: true` in the TCGA field map. Build **standards conformance** (AJCC, ICD-O-3, ICD-10, mCODE). Accept FIGO staging alongside AJCC. Review the draft **treatment** and **biomarker** mappings. |
-| **Lakshmi Sravya Rachakonda** ([@Sravya1802](https://github.com/Sravya1802)), repository admin | SEER and outputs | `adapters/seer.py`, `adapters/fieldmaps/seer_breast.yaml`, `report/` | Export the breast cancer case listing from SEER*Stat into `data/seer/` (account approved; first confirm whether the treatment fields need Research Plus). Check the headers and set `confirmed: true` in the SEER field map. Build the SEER reference population for the representativeness check. Confirm with SEER the small-cell rule for public reports and whether fitting a model on case-level rows is allowed (data use agreement item 19). Build the **Croissant** and **RO-Crate** exports; specs are in [`croissant.py`](src/scorecard/report/croissant.py) and [`rocrate.py`](src/scorecard/report/rocrate.py). |
+| **Lakshmi Sravya Rachakonda** ([@Sravya1802](https://github.com/Sravya1802)), repository admin | SEER and outputs | `adapters/seer.py`, `adapters/fieldmaps/seer_breast.yaml`, `report/` | Export the breast cancer case listing from SEER*Stat into `data/seer/` (a SEER Research Data account is approved; the treatment fields need Research Plus, which needs an active eRA Commons account). Check the headers and set `confirmed: true` in the SEER field map. Build the SEER reference population for the representativeness check. Confirm with SEER the small-cell rule for public reports and whether fitting a model on case-level rows is allowed (data use agreement item 19). Build the **Croissant** and **RO-Crate** exports; specs are in [`croissant.py`](src/scorecard/report/croissant.py) and [`rocrate.py`](src/scorecard/report/rocrate.py). |
 
 The IDC (imaging) and PDC (proteomics) adapters are unassigned.
 
@@ -197,7 +246,8 @@ The IDC (imaging) and PDC (proteomics) adapters are unassigned.
 | Piece | State | Owner |
 |---|---|---|
 | DatasetProfile, adapter base, check registry, pipeline, verdict, CLI | ✅ Real | Nikita Thakur |
-| Five clinical question tasks (Q1 chemo benefit to Q5 HRD germline testing) | 🟨 Real; cutoffs are drafts awaiting clinician review | Nikita Thakur |
+| Question 1 (chemo benefit) and question 5 (HRD germline testing) pipelines | 🟨 Real; cutoffs are drafts awaiting Dr. Gadi's sign-off | Nikita Thakur |
+| Questions 2 to 4 (neoadjuvant, endocrine duration, ovarian suppression) | 🟨 Short drafts | Nikita Thakur |
 | Task-fit checks: cohort, outcome, sample size, treatment, representativeness | ✅ Real | Nikita Thakur |
 | GDC adapter: clinical, ER/PR/HER2, modality presence, TCGA supplement join | ✅ Real; supplement field map unconfirmed | Nikita Thakur, Juhi Anand |
 | GDC gene expression and mutation matrices | ⬜ Presence only | Nikita Thakur |
@@ -213,7 +263,7 @@ The IDC (imaging) and PDC (proteomics) adapters are unassigned.
 
 ### Open questions
 
-1. **Clinical sign-off.** Every cutoff and population rule in the five task files is a draft until a clinician reviews it.
+1. **Clinical sign-off.** Every cutoff and population rule in the task files is a draft until Dr. Gadi reviews it.
 2. **SEER rules.** What the data use agreement allows in a public report, and whether a model may be fitted on case-level rows.
 3. **Check count.** The prototype slide says "16 of 16 checks"; the code now has 16 registered, of which 4 are stubs.
 4. **Radar mapping.** Provenance and Sustainability still have no check.

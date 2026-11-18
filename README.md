@@ -7,7 +7,7 @@ A Python package that profiles a dataset from the NCI Cancer Research Data Commo
 NCI Data Jamboree 2026 project · University of Illinois Cancer Center
 Lead: Nikita Thakur ([@nikitasthakur](https://github.com/nikitasthakur)) · Team: Saransh Singh ([@singh2626ss](https://github.com/singh2626ss)), Juhi Anand ([@ajuhia](https://github.com/ajuhia)), Lakshmi Sravya Rachakonda ([@Sravya1802](https://github.com/Sravya1802))
 
-> **Status: walking skeleton (v0.1).** The whole pipeline runs end to end on live TCGA-BRCA data. Six of the ten checks are implemented and four are registered stubs, so every verdict is marked **PROVISIONAL**. See [Team tasks](#team-tasks) for who owns what.
+> **Status: as presented at the NCI Data Jamboree, November 18, 2026.** The pipeline runs end to end on live TCGA-BRCA data and assesses Dr. Gadi's five breast cancer questions. The SEER adapter is built but has not yet been run on a real export, every clinical cutoff is a draft awaiting clinician review, and four general checks are still stubs. See [Team tasks](#team-tasks) for who owns what is left.
 
 ## The five clinical questions
 
@@ -44,7 +44,9 @@ Other commands:
 | Command | What it does |
 |---|---|
 | `scorecard checks` | All registered checks, with family, owner and real/stub state |
-| `scorecard adapters` | Repository adapters (GDC is real; IDC, PDC and SEER are stubs) |
+| `scorecard adapters` | Repository adapters (GDC and SEER are real; IDC and PDC are stubs) |
+| `scorecard reference` | Summarize SEER as a reference population for a task (counts and shares only) |
+| `scorecard grid` | Lay out every run as a questions × datasets grid |
 | `scorecard tasks` | Task specs |
 | `scorecard snapshot --dataset TCGA-BRCA --limit 40 --out file.json` | Save a raw snapshot, for fixtures or offline runs |
 | `pytest` | Offline tests. `pytest -m network` runs the live-API test. |
@@ -56,7 +58,8 @@ Other commands:
 | `data_card.html` | Human-readable report in the layout of the project prototype: verdict, Bridge2AI radar, multimodal linkage, the two check families, and an evidence section for every finding |
 | `scorecard.json` | Everything in the data card, machine-readable |
 | `provenance.json` | Which checks ran, on which snapshot (SHA-256), with which tool, pack, task and library versions |
-| `croissant.json`, `ro-crate/` | Not built yet (owner: Member 4) |
+| `grid.html` | From `scorecard grid`: every question against every dataset on one page |
+| `croissant.json`, `ro-crate/` | Not built yet (owner: Lakshmi Sravya Rachakonda) |
 
 ## First live result (TCGA-BRCA, GDC Data Release 46)
 
@@ -80,54 +83,66 @@ Solid boxes are implemented. Dashed boxes are registered stubs, each labelled wi
 flowchart LR
     subgraph U["1 · Unify the data"]
         GDC["GDC adapter<br/>clinical + modality presence"]
-        IDC["IDC adapter<br/>imaging · member-4"]:::stub
-        PDC["PDC adapter<br/>proteomics"]:::stub
-        SEER["SEER adapter<br/>registry, not linkable"]:::stub
+        IDC["IDC adapter<br/>imaging · unassigned"]:::stub
+        PDC["PDC adapter<br/>proteomics · unassigned"]:::stub
+        SEER["SEER adapter<br/>local SEER*Stat export<br/>not linkable · field map unconfirmed"]
         IR[("DatasetProfile (IR)<br/>features · feature_meta<br/>modalities · site · provenance")]
         GDC --> IR
         IDC -.-> IR
         PDC -.-> IR
-        SEER -.-> IR
+        SEER --> IR
     end
 
     subgraph A["2 · Assess it"]
-        TASK[/"Task spec (YAML)<br/>target · thresholds · severities"/]
+        TASK[/"Task spec (YAML), one per clinical question<br/>population · target · variables · thresholds"/]
         PACK[/"oncology.yaml pack<br/>variables per criterion"/]
-        subgraph INT["Integrity · member-2"]
+        subgraph INT["Integrity · Saransh"]
             M["Missingness"]
             CI["Class imbalance"]
             SE["Site effects"]:::stub
             CF["Confounding"]:::stub
             LK["Data leakage"]:::stub
         end
-        subgraph COMP["Completeness · member-3"]
+        subgraph COMP["Completeness · Juhi"]
             SHG["Stage, histology & grade"]
             TR["Treatment (draft)"]
             OUT["Outcomes / survival"]
             BIO["Biomarkers (draft)"]
             STD["Standards conformance"]:::stub
+            CC["Conditional completeness"]
+        end
+        subgraph TF["Task fit · Nikita"]
+            CO["Cohort identifiable"]
+            OA["Outcome adequacy"]
+            SS["Sample size"]
+            TA["Treatment adequacy"]
+            RP["Representativeness"]
         end
     end
 
     subgraph D["3 · Decide & share"]
         V{"Verdict<br/>READY · CONDITIONAL · NOT READY<br/>+ PROVISIONAL flag"}
         RAD["Bridge2AI radar<br/>7 criteria"]
-        CARD["data_card.html"]
+        CARD["data_card.html · grid.html"]
         SJ["scorecard.json"]
         PROV["provenance.json"]
-        CRO["croissant.json · member-4"]:::stub
-        ROC["ro-crate/ · member-4"]:::stub
+        CRO["croissant.json · Sravya"]:::stub
+        ROC["ro-crate/ · Sravya"]:::stub
     end
 
     IR --> INT
     IR --> COMP
+    IR --> TF
     TASK --> INT
     TASK --> COMP
+    TASK --> TF
     PACK --> COMP
     INT --> V
     COMP --> V
+    TF --> V
     INT --> RAD
     COMP --> RAD
+    TF --> RAD
     V --> CARD
     RAD --> CARD
     V --> SJ
@@ -144,11 +159,11 @@ flowchart LR
 |---|---|---|
 | 1. Adapter | `adapters/` | Downloads one repository's data (`fetch_raw`, the only step that uses the network) and converts it into the shared shape (`build_profile`, pure). A saved download can be re-run, so results are reproducible and tests run offline. |
 | 2. DatasetProfile | `profile.py` | One row per patient. Every column is labelled with a modality and a role: feature, target (outcome), identifier, or site. Checks only use feature columns as inputs, so the outcome can never leak in as a predictor. |
-| 3. Checks | `checks/` | Ten checks in two families. **Data integrity** works for any dataset; **oncology completeness** is cancer-specific. Each returns a status, a severity, a summary, and the evidence behind it. |
+| 3. Checks | `checks/` | Three families. **Data integrity** works for any dataset; **oncology completeness** is cancer-specific; **task fit** asks whether the dataset can answer one clinical question (right patients, outcome, sample size, treatment records, representativeness). Each check returns a status, a severity, a summary, and the evidence behind it. |
 | 4. Verdict | `verdict.py` | Combines the results (rules below) and scores the seven Bridge2AI criteria for the radar chart. |
 | 5. Report | `report/` | Writes the data card, `scorecard.json` and `provenance.json`. |
 
-Thresholds and requirements live in YAML, not code: [`tasks/survival_prediction.yaml`](src/scorecard/tasks/survival_prediction.yaml) says what the task needs, and [`packs/oncology.yaml`](src/scorecard/packs/oncology.yaml) lists the cancer variables each completeness check looks for. Because the thresholds belong to the task, the same dataset can be ready for one task and not another.
+Thresholds and requirements live in YAML, not code: each file in [`tasks/`](src/scorecard/tasks/) says what one task needs, and [`packs/oncology.yaml`](src/scorecard/packs/oncology.yaml) lists the cancer variables each completeness check looks for. Because the thresholds belong to the task, the same dataset can be ready for one task and not another.
 
 ### Verdict rules
 
@@ -163,80 +178,70 @@ More detail (module ownership diagram, field-level contracts, the proposed check
 
 ## Team tasks
 
-| Role | Person | Owns | Tasks | Done when |
-|---|---|---|---|---|
-| **Lead**: contracts, integration, demo | Nikita Thakur | `profile.py`, `adapters/base.py`, `checks/base.py`, `verdict.py`, `pipeline.py`, `adapters/gdc.py` | Review every change to the shared contracts. Load GDC gene expression and mutation matrices into the profile (TODO at the end of `adapters/gdc.py`). Guard scope. Final presentation. | The IR has not changed for two weeks; molecular features appear in the profile |
-| **Member 2**: statistical engine | _name TBD_ | `checks/integrity/` | Build **site effects** (cross-validated site AUC against a permutation null), **confounding** (Cramér's V between site and target) and **data leakage** (identifier columns, patient straddle, near-duplicates, single-feature leaks). Specs are in [`checks/integrity/stubs.py`](src/scorecard/checks/integrity/stubs.py). Make sure every model the tool fits sits inside CV folds. | All five integrity checks are real, with evidence and tests |
-| **Member 3**: oncology domain pack | _name TBD_ | `packs/oncology.yaml`, `checks/completeness/` | Build **standards conformance** (AJCC, ICD-O-3, ICD-10, mCODE); spec in [`checks/completeness/standards.py`](src/scorecard/checks/completeness/standards.py). Review the draft **treatment** and **biomarker** mappings. Confirm TCGA-BRCA fields mean what the pack assumes. | No criterion carries a DRAFT label |
-| **Member 4** (proposed): outputs and linkage | _name TBD_ | `report/`, `adapters/idc.py` | Build **Croissant** export with the RAI extension carrying our findings, and **RO-Crate** packaging; specs in [`report/croissant.py`](src/scorecard/report/croissant.py) and [`report/rocrate.py`](src/scorecard/report/rocrate.py). At the event, build the **IDC adapter** and fill the imaging row of the linkage panel. | `croissant.json` validates; the IDC row shows real numbers |
+The Jamboree build is complete and the project is frozen as presented. The work below is what is left, assigned by person, for anyone who picks the project up again.
 
-The Member 4 role is a proposal, because the original role notes stop after Member 3. Fill in names once the team agrees.
+| Person | Area | Owns | Remaining tasks |
+|---|---|---|---|
+| **Nikita Thakur** ([@nikitasthakur](https://github.com/nikitasthakur)), lead | Five clinical questions, shared contracts, task-fit checks | `profile.py`, `pipeline.py`, `verdict.py`, `tasks/*.yaml`, `checks/task_fit/`, `adapters/gdc.py` | Get clinician sign-off from Dr. Gadi on every cutoff and record it under `clinical_review` in each task file. Merge the data guide (`docs/GETTING_THE_DATA.md`, still on the `five-questions` branch). Check the Q5 copy-number entry, which reports copy number as not carried although GDC has open copy-number files. Load the gene expression and mutation matrices into the profile. Finish the write-up in `docs/LIMITATIONS.md`. |
+| **Saransh Singh** ([@singh2626ss](https://github.com/singh2626ss)) | Statistical engine | `checks/integrity/` | Build **site effects** (cross-validated site AUC against a permutation null), **confounding** (Cramér's V between site and target) and **data leakage** (identifier columns, patient straddle, near-duplicates, single-feature leaks); specs are in [`stubs.py`](src/scorecard/checks/integrity/stubs.py). Keep every fitted model, including the propensity model in treatment adequacy, inside CV folds. |
+| **Juhi Anand** ([@ajuhia](https://github.com/ajuhia)) | Oncology domain pack and TCGA data | `packs/oncology.yaml`, `checks/completeness/`, `adapters/fieldmaps/tcga_brca.yaml` | Download the TCGA-BRCA supplement files (Clinical Supplement, TCGA-CDR, published subtype and HRD tables) into `data/tcga_brca/`, check the headers, and set `confirmed: true` in the TCGA field map. Build **standards conformance** (AJCC, ICD-O-3, ICD-10, mCODE). Accept FIGO staging alongside AJCC. Review the draft **treatment** and **biomarker** mappings. |
+| **Lakshmi Sravya Rachakonda** ([@Sravya1802](https://github.com/Sravya1802)), repository admin | SEER and outputs | `adapters/seer.py`, `adapters/fieldmaps/seer_breast.yaml`, `report/` | Export the breast cancer case listing from SEER*Stat into `data/seer/` (account approved; first confirm whether the treatment fields need Research Plus). Check the headers and set `confirmed: true` in the SEER field map. Build the SEER reference population for the representativeness check. Confirm with SEER the small-cell rule for public reports and whether fitting a model on case-level rows is allowed (data use agreement item 19). Build the **Croissant** and **RO-Crate** exports; specs are in [`croissant.py`](src/scorecard/report/croissant.py) and [`rocrate.py`](src/scorecard/report/rocrate.py). |
+
+The IDC (imaging) and PDC (proteomics) adapters are unassigned.
 
 ### What is built and what is left
 
 | Piece | State | Owner |
 |---|---|---|
-| DatasetProfile, adapter base, check registry, pipeline, verdict, CLI | ✅ Real | Lead |
-| GDC adapter: clinical, ER/PR/HER2, modality presence | ✅ Real | Lead |
-| GDC gene expression and mutation matrices | ⬜ Presence only | Lead |
-| Missingness, class imbalance | ✅ Real | Member 2 |
-| Site effects, confounding, data leakage | ⬜ Stub with spec | Member 2 |
-| Stage/histology/grade, outcomes | ✅ Real | Member 3 |
-| Treatment, biomarkers | 🟨 Real, draft mapping | Member 3 |
-| Standards conformance | ⬜ Stub with spec | Member 3 |
-| Data card, scorecard.json, provenance.json | ✅ Real | Member 4 |
-| Croissant, RO-Crate, IDC adapter | ⬜ Stub with spec | Member 4 |
-| PDC, SEER adapters | ⬜ Stub | Unassigned |
-
-### Schedule
-
-Prework runs October 5 to November 13, 2026. The event is **November 16–18, 2026**.
-
-| Week | Lead | Member 2 | Member 3 | Member 4 |
-|---|---|---|---|---|
-| Oct 5–9 | Push repo; everyone runs it; review the IR together | Read stub specs | Review pack and task YAML | Compare data card with the prototype |
-| Oct 12–16 | Freeze the IR (v0.2) | Site effects | Conformance vocabularies | Croissant |
-| Oct 19–23 | Expression matrix | Confounding | Conformance check and tests | Croissant RAI fields; validate |
-| Oct 26–30 | Mutation matrix | Leakage | Treatment and biomarker review | RO-Crate |
-| Nov 2–6 | First non-provisional verdict | Speed up permutation test | Threshold review | IDC exploration |
-| Nov 9–13 | Demo dry run; freeze `main` | Buffer and fixes | Buffer and fixes | Buffer and fixes |
-
-| Event day | Goal |
-|---|---|
-| Day 1 | Onboard collaborators; start the IDC adapter |
-| Day 2 | Imaging row on the linkage panel; optionally a second TCGA project to show the pack generalizes |
-| Day 3 | Freeze by midday; final data card; tagged GitHub release |
+| DatasetProfile, adapter base, check registry, pipeline, verdict, CLI | ✅ Real | Nikita Thakur |
+| Five clinical question tasks (Q1 chemo benefit to Q5 HRD germline testing) | 🟨 Real; cutoffs are drafts awaiting clinician review | Nikita Thakur |
+| Task-fit checks: cohort, outcome, sample size, treatment, representativeness | ✅ Real | Nikita Thakur |
+| GDC adapter: clinical, ER/PR/HER2, modality presence, TCGA supplement join | ✅ Real; supplement field map unconfirmed | Nikita Thakur, Juhi Anand |
+| GDC gene expression and mutation matrices | ⬜ Presence only | Nikita Thakur |
+| Missingness, class imbalance | ✅ Real | Saransh Singh |
+| Site effects, confounding, data leakage | ⬜ Stub with spec | Saransh Singh |
+| Stage/histology/grade, outcomes, conditional completeness | ✅ Real | Juhi Anand |
+| Treatment, biomarkers | 🟨 Real, draft mapping | Juhi Anand |
+| Standards conformance | ⬜ Stub with spec | Juhi Anand |
+| SEER adapter and reference population | 🟨 Real; field map unconfirmed, not yet run on a real export | Lakshmi Sravya Rachakonda |
+| Data card, scorecard.json, provenance.json, results grid | ✅ Real | Lakshmi Sravya Rachakonda |
+| Croissant, RO-Crate | ⬜ Stub with spec | Lakshmi Sravya Rachakonda |
+| IDC, PDC adapters | ⬜ Stub | Unassigned |
 
 ### Open questions
 
-1. **Check count.** The prototype slide says "16 of 16 checks"; the deck defines 10. Are six more intended?
-2. **Radar mapping.** Provenance, Ethics and Sustainability have no check yet.
-3. **Tumor grade** is 100% missing in GDC TCGA-BRCA. Should it stay required for breast?
-4. **License.** MIT is a placeholder pending the lead's confirmation.
-5. **Member 4.** Confirm the role and who takes it.
+1. **Clinical sign-off.** Every cutoff and population rule in the five task files is a draft until a clinician reviews it.
+2. **SEER rules.** What the data use agreement allows in a public report, and whether a model may be fitted on case-level rows.
+3. **Check count.** The prototype slide says "16 of 16 checks"; the code now has 16 registered, of which 4 are stubs.
+4. **Radar mapping.** Provenance and Sustainability still have no check.
+5. **Tumor grade** is 100% missing in GDC TCGA-BRCA. Should it stay required for breast?
+6. **License.** MIT is a placeholder pending the lead's confirmation.
 
-Risks and the full plan are in [docs/TECHNICAL_PLAN.md](docs/TECHNICAL_PLAN.md). Read [CONTRIBUTING.md](CONTRIBUTING.md) before your first PR.
+Risks and design notes are in [docs/TECHNICAL_PLAN.md](docs/TECHNICAL_PLAN.md). Read [CONTRIBUTING.md](CONTRIBUTING.md) before your first PR.
 
 ## Repository layout
 
 ```
 src/scorecard/
   profile.py              DatasetProfile: the shared intermediate representation
-  adapters/               gdc.py (real); idc.py, pdc.py, seer.py (stubs)
+  adapters/               gdc.py, seer.py, tcga_supplement.py (real); idc.py, pdc.py (stubs)
+  adapters/fieldmaps/     source column names for TCGA-BRCA and SEER (unconfirmed)
   checks/integrity/       missingness, class imbalance (real); site effects, confounding, leakage (stubs)
-  checks/completeness/    pack-driven engine + criteria (real); standards conformance (stub)
+  checks/completeness/    pack-driven engine, criteria, conditional completeness (real); standards conformance (stub)
+  checks/task_fit/        cohort, outcome, sample size, treatment, representativeness (real)
   packs/oncology.yaml     variable inventory per completeness criterion
-  tasks/*.yaml            what each AI task requires: target, thresholds, severities
+  tasks/*.yaml            the five clinical questions plus survival prediction
   verdict.py              blocking vs degrading -> verdict; Bridge2AI radar scores
-  report/                 data card, scorecard.json, provenance; Croissant and RO-Crate stubs
+  report/                 data card, results grid, scorecard.json, provenance; Croissant and RO-Crate stubs
   pipeline.py, cli.py
 tests/                    offline tests against a real 40-patient fixture
-docs/                     architecture and technical plan
+scripts/                  check_no_data.py (run in CI), synthetic demo data
+docs/                     architecture, technical plan, five questions, data handling, limitations
 ```
 
 ## Data access
 
-The tool uses only open-access data. It reads from the public GDC API without credentials. Never commit controlled-access data or SEER extracts.
+TCGA-BRCA comes from the public GDC API without credentials. SEER needs a SEER*Stat account per person, and its case-level rows are covered by a data use agreement: they stay in the git-ignored `data/` folder and are never committed, shared or given to AI tools. Read [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md) before touching any data.
 
 ## License
 

@@ -7,7 +7,7 @@ A Python package that profiles a dataset from the NCI Cancer Research Data Commo
 NCI Data Jamboree 2026 project · University of Illinois Cancer Center
 Lead: Nikita Thakur ([@nikitasthakur](https://github.com/nikitasthakur)) · Team: Saransh Singh ([@singh2626ss](https://github.com/singh2626ss)), Juhi Anand ([@ajuhia](https://github.com/ajuhia)), Lakshmi Sravya Rachakonda ([@Sravya1802](https://github.com/Sravya1802))
 
-> **Status: as presented at the NCI Data Jamboree, November 18, 2026.** The pipeline runs end to end on live TCGA-BRCA data and assesses Dr. Gadi's five breast cancer questions. The SEER adapter is built but has not yet been run on a real export, every clinical cutoff is a draft awaiting clinician review, and four general checks are still stubs. See [Team tasks](#team-tasks) for who owns what is left.
+> **Status: as presented at the NCI Data Jamboree, November 18, 2026.** The pipeline assesses Dr. Gadi's five breast cancer questions and was demonstrated on mock data (see [Demo data](#demo-data)). The SEER adapter is built but has not yet been run on a real export, every clinical cutoff is a draft awaiting clinician review, and four general checks are still stubs. See [Team tasks](#team-tasks) for who owns what is left.
 
 ## The five clinical questions
 
@@ -61,17 +61,20 @@ Other commands:
 | `grid.html` | From `scorecard grid`: every question against every dataset on one page |
 | `croissant.json`, `ro-crate/` | Not built yet (owner: Lakshmi Sravya Rachakonda) |
 
-## First live result (TCGA-BRCA, GDC Data Release 46)
+## Demo data
 
-| Check | Result |
-|---|---|
-| Missingness | WARN: 7.1% overall; `tumor_grade` is 100% missing; 9 features' missingness is associated with site or outcome |
-| Class imbalance | PASS: 101 patients in the minority class at 5 years (just over the threshold of 100); 151 deaths in total |
-| Stage, histology & grade | WARN: 83% coverage, held down by tumor grade |
-| Treatment / Outcomes / Biomarkers | PASS: 100% / 100% / 94% (treatment and biomarkers are draft mappings) |
-| Site effects, confounding, leakage, standards conformance | Not yet assessed |
+The results shown at the Jamboree were produced on **mock data**: an invented TCGA-shaped dataset (1,100 patients) and an invented SEER-shaped dataset (6,000 patients). Every value is random, and no row comes from a real patient or a real file. The column names and value codes follow the published TCGA and SEER metadata, so the adapters and checks run end to end exactly as they would on real data. No model is trained at any point: the scorecard profiles data quality, it does not fit a predictive model.
 
-Verdict: **CONDITIONAL (provisional)**. Two degrading deficiencies and none blocking, with four checks still to build.
+To reproduce the demo:
+
+```bash
+python scripts/make_synthetic_demo.py     # writes data/synthetic/ (git-ignored)
+scorecard profile --snapshot data/synthetic/gdc_synthetic_snapshot.json \
+  --supplement data/synthetic/tcga_supplement --task chemo-benefit --out out/demo/chemo-benefit
+scorecard grid --runs out/demo --out out/demo/grid.html
+```
+
+Running on real data is the next step: TCGA-BRCA from the open GDC API (see Quick start) and SEER from a SEER*Stat export (see [docs/DATA_HANDLING.md](docs/DATA_HANDLING.md)).
 
 ## Architecture
 
